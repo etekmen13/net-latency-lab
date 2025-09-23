@@ -1,19 +1,24 @@
 cmake_minimum_required(VERSION 3.20)
-project(net_latency_lab CXX)
+project(net_latency_lab LANGUAGES CXX)
 
-option(PERF_BUILD "Strip debug logs, optimize for measuremets" OFF)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_library(nll_common INTERFACE)
-target_include_directories(nll_common INTERFACE ${CMAKE_SOURCE_DIR}/src)
-target_compile_features(nll_common INTERFACE cxx_std_20)
-
-if (PERF_BUILD)
-    target_compile_definitions(nll_common INTERFACE NLL_LOG_LEVEL=1) #0=ERROR,1=WARN, 2=INFO, 3=DEBUG
-    set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
-else()
-    target_compile_definitions(nll_common INTERFACE NLL_LOG_LEVEL=3)
-    set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "" FORCE)
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
-add_executable(clock_sanity src/apps/clock_sanity.cpp)
-target_link_libraries(clock_sanity PRIVATE nll_common)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic -Wconversion -Wshadow -Wdouble-promotion)
+  add_compile_options(-O3 -march=armv8-a)
+endif()
+
+
+add_library(common_headers INTERFACE)
+target_include_directories(common_headers INTERFACE
+  "${CMAKE_SOURCE_DIR}/src"
+)
+
+add_subdirectory(src/sender)
+add_subdirectory(src/receiver)

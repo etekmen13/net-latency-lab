@@ -1,0 +1,12 @@
+[
+{
+  "directory": "/home/etekmen13/net-latency-lab/build/src/sender",
+  "command": "/usr/bin/c++  -I/home/etekmen13/net-latency-lab/src -O3 -DNDEBUG -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Wdouble-promotion -O3 -march=armv8-a -std=gnu++20 -o CMakeFiles/sender.dir/sender.cpp.o -c /home/etekmen13/net-latency-lab/src/sender/sender.cpp",
+  "file": "/home/etekmen13/net-latency-lab/src/sender/sender.cpp"
+},
+{
+  "directory": "/home/etekmen13/net-latency-lab/build/src/receiver",
+  "command": "/usr/bin/c++  -I/home/etekmen13/net-latency-lab/src -O3 -DNDEBUG -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Wdouble-promotion -O3 -march=armv8-a -std=gnu++20 -o CMakeFiles/receiver.dir/receiver.cpp.o -c /home/etekmen13/net-latency-lab/src/receiver/receiver.cpp",
+  "file": "/home/etekmen13/net-latency-lab/src/receiver/receiver.cpp"
+}
+]

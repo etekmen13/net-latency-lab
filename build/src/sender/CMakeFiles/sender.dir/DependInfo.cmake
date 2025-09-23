@@ -8,11 +8,16 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/home/etekmen13/net-latency-lab/src/sender/sender.cpp" "src/sender/CMakeFiles/sender.dir/sender.cpp.o" "gcc" "src/sender/CMakeFiles/sender.dir/sender.cpp.o.d"
+  "/root/net-latency-lab/src/sender/sender.cpp" "src/sender/CMakeFiles/sender.dir/sender.cpp.o" "gcc" "src/sender/CMakeFiles/sender.dir/sender.cpp.o.d"
+  "" "src/sender/sender" "gcc" "src/sender/CMakeFiles/sender.dir/link.d"
   )
 
-# Targets to which this target links.
-set(CMAKE_TARGET_LINKED_INFO_FILES
+# Targets to which this target links which contain Fortran sources.
+set(CMAKE_Fortran_TARGET_LINKED_INFO_FILES
+  )
+
+# Targets to which this target links which contain Fortran sources.
+set(CMAKE_Fortran_TARGET_FORWARD_LINKED_INFO_FILES
   )
 
 # Fortran module output directory.

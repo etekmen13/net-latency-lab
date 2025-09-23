@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+namespace nll {
 
 struct message_header {
     uint16_t magic;
@@ -10,3 +11,4 @@ struct message_header {
 };
 
 enum class payload {TINY = 16, SMALL = 256, MEDIUM = 1024};
+} // namespace nll

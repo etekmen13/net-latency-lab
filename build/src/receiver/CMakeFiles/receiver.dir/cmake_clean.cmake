@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/receiver.dir/link.d"
   "CMakeFiles/receiver.dir/receiver.cpp.o"
   "CMakeFiles/receiver.dir/receiver.cpp.o.d"
   "receiver"

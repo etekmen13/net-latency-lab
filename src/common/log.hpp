@@ -78,7 +78,7 @@ inline void vlogf(int lvl, const char *fmt, va_list ap) {
 #if NLL_LOG_THREADSAFE
   const std::lock_guard<std::mutex> g(log_mutex());
 #endif
-  const std::uint64_t t = nll::mono_ns_raw();
+  const std::uint64_t t = nll::mono_ns();
   const char *color = detail::lvl_color(lvl);
   const char *name = detail::lvl_name(lvl);
 

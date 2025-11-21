@@ -117,19 +117,6 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named sender
-
-# Build rule for target.
-sender: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 sender
-.PHONY : sender
-
-# fast build rule for target.
-sender/fast:
-	$(MAKE) $(MAKESILENT) -f src/sender/CMakeFiles/sender.dir/build.make src/sender/CMakeFiles/sender.dir/build
-.PHONY : sender/fast
-
-#=============================================================================
 # Target rules for targets named receiver
 
 # Build rule for target.
@@ -139,8 +126,69 @@ receiver: cmake_check_build_system
 
 # fast build rule for target.
 receiver/fast:
-	$(MAKE) $(MAKESILENT) -f src/receiver/CMakeFiles/receiver.dir/build.make src/receiver/CMakeFiles/receiver.dir/build
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/receiver.dir/build.make CMakeFiles/receiver.dir/build
 .PHONY : receiver/fast
+
+#=============================================================================
+# Target rules for targets named sender
+
+# Build rule for target.
+sender: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 sender
+.PHONY : sender
+
+# fast build rule for target.
+sender/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/sender.dir/build.make CMakeFiles/sender.dir/build
+.PHONY : sender/fast
+
+src/receiver/receiver.o: src/receiver/receiver.cpp.o
+.PHONY : src/receiver/receiver.o
+
+# target to build an object file
+src/receiver/receiver.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/receiver.dir/build.make CMakeFiles/receiver.dir/src/receiver/receiver.cpp.o
+.PHONY : src/receiver/receiver.cpp.o
+
+src/receiver/receiver.i: src/receiver/receiver.cpp.i
+.PHONY : src/receiver/receiver.i
+
+# target to preprocess a source file
+src/receiver/receiver.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/receiver.dir/build.make CMakeFiles/receiver.dir/src/receiver/receiver.cpp.i
+.PHONY : src/receiver/receiver.cpp.i
+
+src/receiver/receiver.s: src/receiver/receiver.cpp.s
+.PHONY : src/receiver/receiver.s
+
+# target to generate assembly for a file
+src/receiver/receiver.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/receiver.dir/build.make CMakeFiles/receiver.dir/src/receiver/receiver.cpp.s
+.PHONY : src/receiver/receiver.cpp.s
+
+src/sender/sender.o: src/sender/sender.cpp.o
+.PHONY : src/sender/sender.o
+
+# target to build an object file
+src/sender/sender.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/sender.dir/build.make CMakeFiles/sender.dir/src/sender/sender.cpp.o
+.PHONY : src/sender/sender.cpp.o
+
+src/sender/sender.i: src/sender/sender.cpp.i
+.PHONY : src/sender/sender.i
+
+# target to preprocess a source file
+src/sender/sender.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/sender.dir/build.make CMakeFiles/sender.dir/src/sender/sender.cpp.i
+.PHONY : src/sender/sender.cpp.i
+
+src/sender/sender.s: src/sender/sender.cpp.s
+.PHONY : src/sender/sender.s
+
+# target to generate assembly for a file
+src/sender/sender.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/sender.dir/build.make CMakeFiles/sender.dir/src/sender/sender.cpp.s
+.PHONY : src/sender/sender.cpp.s
 
 # Help Target
 help:
@@ -152,6 +200,12 @@ help:
 	@echo "... rebuild_cache"
 	@echo "... receiver"
 	@echo "... sender"
+	@echo "... src/receiver/receiver.o"
+	@echo "... src/receiver/receiver.i"
+	@echo "... src/receiver/receiver.s"
+	@echo "... src/sender/sender.o"
+	@echo "... src/sender/sender.i"
+	@echo "... src/sender/sender.s"
 .PHONY : help
 
 

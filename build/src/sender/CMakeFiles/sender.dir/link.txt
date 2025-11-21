@@ -1,1 +1,0 @@
-/usr/bin/c++ -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/sender.dir/link.d CMakeFiles/sender.dir/sender.cpp.o -o sender  -lrt

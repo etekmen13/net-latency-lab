@@ -1,8 +1,4 @@
+/root/net-latency-lab/build/CMakeFiles/receiver.dir
+/root/net-latency-lab/build/CMakeFiles/sender.dir
 /root/net-latency-lab/build/CMakeFiles/edit_cache.dir
 /root/net-latency-lab/build/CMakeFiles/rebuild_cache.dir
-/root/net-latency-lab/build/src/sender/CMakeFiles/sender.dir
-/root/net-latency-lab/build/src/sender/CMakeFiles/edit_cache.dir
-/root/net-latency-lab/build/src/sender/CMakeFiles/rebuild_cache.dir
-/root/net-latency-lab/build/src/receiver/CMakeFiles/receiver.dir
-/root/net-latency-lab/build/src/receiver/CMakeFiles/edit_cache.dir
-/root/net-latency-lab/build/src/receiver/CMakeFiles/rebuild_cache.dir

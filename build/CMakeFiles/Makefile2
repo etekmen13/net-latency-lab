@@ -63,126 +63,87 @@ CMAKE_BINARY_DIR = /root/net-latency-lab/build
 # Directory level rules for the build root directory
 
 # The main recursive "all" target.
-all: src/sender/all
-all: src/receiver/all
+all: CMakeFiles/receiver.dir/all
+all: CMakeFiles/sender.dir/all
 .PHONY : all
 
 # The main recursive "codegen" target.
-codegen: src/sender/codegen
-codegen: src/receiver/codegen
+codegen: CMakeFiles/receiver.dir/codegen
+codegen: CMakeFiles/sender.dir/codegen
 .PHONY : codegen
 
 # The main recursive "preinstall" target.
-preinstall: src/sender/preinstall
-preinstall: src/receiver/preinstall
+preinstall:
 .PHONY : preinstall
 
 # The main recursive "clean" target.
-clean: src/sender/clean
-clean: src/receiver/clean
+clean: CMakeFiles/receiver.dir/clean
+clean: CMakeFiles/sender.dir/clean
 .PHONY : clean
 
 #=============================================================================
-# Directory level rules for directory src/receiver
-
-# Recursive "all" directory target.
-src/receiver/all: src/receiver/CMakeFiles/receiver.dir/all
-.PHONY : src/receiver/all
-
-# Recursive "codegen" directory target.
-src/receiver/codegen: src/receiver/CMakeFiles/receiver.dir/codegen
-.PHONY : src/receiver/codegen
-
-# Recursive "preinstall" directory target.
-src/receiver/preinstall:
-.PHONY : src/receiver/preinstall
-
-# Recursive "clean" directory target.
-src/receiver/clean: src/receiver/CMakeFiles/receiver.dir/clean
-.PHONY : src/receiver/clean
-
-#=============================================================================
-# Directory level rules for directory src/sender
-
-# Recursive "all" directory target.
-src/sender/all: src/sender/CMakeFiles/sender.dir/all
-.PHONY : src/sender/all
-
-# Recursive "codegen" directory target.
-src/sender/codegen: src/sender/CMakeFiles/sender.dir/codegen
-.PHONY : src/sender/codegen
-
-# Recursive "preinstall" directory target.
-src/sender/preinstall:
-.PHONY : src/sender/preinstall
-
-# Recursive "clean" directory target.
-src/sender/clean: src/sender/CMakeFiles/sender.dir/clean
-.PHONY : src/sender/clean
-
-#=============================================================================
-# Target rules for target src/sender/CMakeFiles/sender.dir
+# Target rules for target CMakeFiles/receiver.dir
 
 # All Build rule for target.
-src/sender/CMakeFiles/sender.dir/all:
-	$(MAKE) $(MAKESILENT) -f src/sender/CMakeFiles/sender.dir/build.make src/sender/CMakeFiles/sender.dir/depend
-	$(MAKE) $(MAKESILENT) -f src/sender/CMakeFiles/sender.dir/build.make src/sender/CMakeFiles/sender.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/root/net-latency-lab/build/CMakeFiles --progress-num=3,4 "Built target sender"
-.PHONY : src/sender/CMakeFiles/sender.dir/all
-
-# Build rule for subdir invocation for target.
-src/sender/CMakeFiles/sender.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /root/net-latency-lab/build/CMakeFiles 2
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 src/sender/CMakeFiles/sender.dir/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /root/net-latency-lab/build/CMakeFiles 0
-.PHONY : src/sender/CMakeFiles/sender.dir/rule
-
-# Convenience name for target.
-sender: src/sender/CMakeFiles/sender.dir/rule
-.PHONY : sender
-
-# codegen rule for target.
-src/sender/CMakeFiles/sender.dir/codegen:
-	$(MAKE) $(MAKESILENT) -f src/sender/CMakeFiles/sender.dir/build.make src/sender/CMakeFiles/sender.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/root/net-latency-lab/build/CMakeFiles --progress-num=3,4 "Finished codegen for target sender"
-.PHONY : src/sender/CMakeFiles/sender.dir/codegen
-
-# clean rule for target.
-src/sender/CMakeFiles/sender.dir/clean:
-	$(MAKE) $(MAKESILENT) -f src/sender/CMakeFiles/sender.dir/build.make src/sender/CMakeFiles/sender.dir/clean
-.PHONY : src/sender/CMakeFiles/sender.dir/clean
-
-#=============================================================================
-# Target rules for target src/receiver/CMakeFiles/receiver.dir
-
-# All Build rule for target.
-src/receiver/CMakeFiles/receiver.dir/all:
-	$(MAKE) $(MAKESILENT) -f src/receiver/CMakeFiles/receiver.dir/build.make src/receiver/CMakeFiles/receiver.dir/depend
-	$(MAKE) $(MAKESILENT) -f src/receiver/CMakeFiles/receiver.dir/build.make src/receiver/CMakeFiles/receiver.dir/build
+CMakeFiles/receiver.dir/all:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/receiver.dir/build.make CMakeFiles/receiver.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/receiver.dir/build.make CMakeFiles/receiver.dir/build
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/root/net-latency-lab/build/CMakeFiles --progress-num=1,2 "Built target receiver"
-.PHONY : src/receiver/CMakeFiles/receiver.dir/all
+.PHONY : CMakeFiles/receiver.dir/all
 
 # Build rule for subdir invocation for target.
-src/receiver/CMakeFiles/receiver.dir/rule: cmake_check_build_system
+CMakeFiles/receiver.dir/rule: cmake_check_build_system
 	$(CMAKE_COMMAND) -E cmake_progress_start /root/net-latency-lab/build/CMakeFiles 2
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 src/receiver/CMakeFiles/receiver.dir/all
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/receiver.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start /root/net-latency-lab/build/CMakeFiles 0
-.PHONY : src/receiver/CMakeFiles/receiver.dir/rule
+.PHONY : CMakeFiles/receiver.dir/rule
 
 # Convenience name for target.
-receiver: src/receiver/CMakeFiles/receiver.dir/rule
+receiver: CMakeFiles/receiver.dir/rule
 .PHONY : receiver
 
 # codegen rule for target.
-src/receiver/CMakeFiles/receiver.dir/codegen:
-	$(MAKE) $(MAKESILENT) -f src/receiver/CMakeFiles/receiver.dir/build.make src/receiver/CMakeFiles/receiver.dir/codegen
+CMakeFiles/receiver.dir/codegen:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/receiver.dir/build.make CMakeFiles/receiver.dir/codegen
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/root/net-latency-lab/build/CMakeFiles --progress-num=1,2 "Finished codegen for target receiver"
-.PHONY : src/receiver/CMakeFiles/receiver.dir/codegen
+.PHONY : CMakeFiles/receiver.dir/codegen
 
 # clean rule for target.
-src/receiver/CMakeFiles/receiver.dir/clean:
-	$(MAKE) $(MAKESILENT) -f src/receiver/CMakeFiles/receiver.dir/build.make src/receiver/CMakeFiles/receiver.dir/clean
-.PHONY : src/receiver/CMakeFiles/receiver.dir/clean
+CMakeFiles/receiver.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/receiver.dir/build.make CMakeFiles/receiver.dir/clean
+.PHONY : CMakeFiles/receiver.dir/clean
+
+#=============================================================================
+# Target rules for target CMakeFiles/sender.dir
+
+# All Build rule for target.
+CMakeFiles/sender.dir/all:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/sender.dir/build.make CMakeFiles/sender.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/sender.dir/build.make CMakeFiles/sender.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/root/net-latency-lab/build/CMakeFiles --progress-num=3,4 "Built target sender"
+.PHONY : CMakeFiles/sender.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/sender.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /root/net-latency-lab/build/CMakeFiles 2
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/sender.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /root/net-latency-lab/build/CMakeFiles 0
+.PHONY : CMakeFiles/sender.dir/rule
+
+# Convenience name for target.
+sender: CMakeFiles/sender.dir/rule
+.PHONY : sender
+
+# codegen rule for target.
+CMakeFiles/sender.dir/codegen:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/sender.dir/build.make CMakeFiles/sender.dir/codegen
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/root/net-latency-lab/build/CMakeFiles --progress-num=3,4 "Finished codegen for target sender"
+.PHONY : CMakeFiles/sender.dir/codegen
+
+# clean rule for target.
+CMakeFiles/sender.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/sender.dir/build.make CMakeFiles/sender.dir/clean
+.PHONY : CMakeFiles/sender.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

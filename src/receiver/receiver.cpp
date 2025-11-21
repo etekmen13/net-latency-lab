@@ -1,52 +1,86 @@
-#include <sys/socket.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
-#include <unistd.h>
 #include <cstring>
-#include <errno.h>
-#include <endian.h>
-#include "common/packet.hpp"
+#include <iostream>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <vector>
+
 #include "common/log.hpp"
-#include <string>
-using nll::log::logf;
-int main() {
-	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sockfd < 0) {
-		logf(0, "Error creating socket in receiver.cpp.\n");
-	}
+#include "common/packet.hpp"
+#include "common/time.hpp"
 
-	struct sockaddr_in src_addr, client_addr;
-	socklen_t client_addr_len = sizeof(client_addr);
-	memset(&src_addr, 0, sizeof(src_addr));
-	src_addr.sin_family = AF_INET;
-	src_addr.sin_port = htons(49200);
-	src_addr.sin_addr.s_addr = inet_addr("192.168.1.10");
-	
-	int result = bind(sockfd, (const struct sockaddr *)&src_addr, sizeof(src_addr));
+struct ScopedSocket {
+  int fd;
+  ScopedSocket() : fd(socket(AF_INET, SOCK_DGRAM, 0)) {}
+  ~ScopedSocket() {
+    if (fd >= 0)
+      close(fd);
+  }
+  operator int() const { return fd; }
+};
 
-	if (result != 0) {
-		logf(0, "Error binding socket.\n");
-		exit(EXIT_FAILURE);
-	}
+int main(int argc, char **argv) {
+  uint16_t port = 49200;
 
-	logf(0, "UDP server listening on port %d...\n", 49200);
-	for(uint32_t i = 0; i < 10; ++i) {
-		struct nll::message_header mh;
-		ssize_t bytes_received = recvfrom(sockfd, (void*)&mh, sizeof(mh), 0,
-						(struct sockaddr *)&client_addr, &client_addr_len);
-		if (bytes_received < 0) {
-			logf(0, "Recvfrom failed.\n");
-			exit(EXIT_FAILURE);
-		}
-		std::string type;
-		switch (mh.msg_type) {
-			case 0: 
-				type = "DATA";
-			default:
-				type= "OTHER";
-		}
-		logf(0, "[PACKET %d]: %s v%d. type=%s, time=%d", be64toh(mh.seq_idx), std::to_string(ntohs(mh.magic)), mh.version, type, mh.send_unix_ns);
-	}
-	close(sockfd);
-	return 0;
+  ScopedSocket sock;
+  if (sock < 0) {
+    NLL_ERROR("Failed to create socket");
+    return 1;
+  }
+
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(port);
+  addr.sin_addr.s_addr = INADDR_ANY;
+
+  if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+    NLL_ERROR("Bind failed on port %d", port);
+    return 1;
+  }
+
+  NLL_INFO("Receiver listening on port %d...", port);
+  NLL_INFO("Outputting CSV data to stdout...");
+
+  std::cout << "seq,tx_ts,rx_ts,latency_ns\n";
+
+  std::vector<uint8_t> buffer(2048);
+  sockaddr_in client_addr{};
+  socklen_t client_len = sizeof(client_addr);
+
+  while (true) {
+    ssize_t len = recvfrom(sock, buffer.data(), buffer.size(), 0,
+                           (struct sockaddr *)&client_addr, &client_len);
+
+    uint64_t rx_time = nll::real_ns();
+
+    if (len < 0) {
+      NLL_WARN("recvfrom failed");
+      continue;
+    }
+
+    if (static_cast<size_t>(len) < sizeof(nll::message_header)) {
+      NLL_WARN("Packet too small: %ld bytes", len);
+      continue;
+    }
+
+    auto *mh = reinterpret_cast<nll::message_header *>(buffer.data());
+    mh->to_host();
+
+    if (mh->magic != 0x6584) {
+      NLL_WARN("Invalid Magic: %x", mh->magic);
+      continue;
+    }
+
+    int64_t latency = rx_time - mh->send_unix_ns;
+
+    std::cout << mh->seq_idx << "," << mh->send_unix_ns << "," << rx_time << ","
+              << latency << "\n";
+
+    if (mh->seq_idx % 1000 == 0) {
+      NLL_DEBUG("processed seq=%d latency=%ldns", mh->seq_idx, latency);
+    }
+  }
+
+  return 0;
 }

@@ -19,9 +19,9 @@ template <std::integral T> inline void pin_to_core(T core_id) {
                                       &cpuset); // pin thread to core
 
   if (result != 0) {
-    NLL_ERROR("Failed to pin thread to core %d", core_id);
+    NLL_ERROR("Failed to pin thread to core %d\n", core_id);
   } else {
-    NLL_DEBUG("Thread pinned to core %d", core_id);
+    NLL_DEBUG("Thread pinned to core %d\n", core_id);
   }
 }
 
@@ -30,9 +30,9 @@ inline void set_realtime_priority() {
   param.sched_priority = 90;
 
   if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &param) != 0) {
-    NLL_WARN("Failed to set SCHED_FIFO. Run with sudo for lower jitter.");
+    NLL_WARN("Failed to set SCHED_FIFO. Run with sudo for lower jitter.\n");
   } else {
-    NLL_DEBUG("SHED_FIFO enabled with priority 90");
+    NLL_DEBUG("SHED_FIFO enabled with priority 90\n");
   }
 }
 

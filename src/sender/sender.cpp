@@ -31,8 +31,8 @@ int main(int argc, char **argv) {
   dest_addr.sin_port = htons(port);
   dest_addr.sin_addr.s_addr = inet_addr(dest_ip.c_str());
 
-  NLL_INFO("Sending to %s:%d at steady rate (1ms interval)...", dest_ip.c_str(),
-           port);
+  NLL_INFO("Sending to %s:%d at steady rate (1ms interval)...\n",
+           dest_ip.c_str(), port);
 
   uint32_t seq = 0;
   const uint64_t interval_ns = 1'000'000;
@@ -61,7 +61,7 @@ int main(int argc, char **argv) {
     if (elapsed < interval_ns) {
       nll::sleep_ns(interval_ns - elapsed);
     } else {
-      NLL_WARN("Can't keep up! Loop took %llu ns", elapsed);
+      NLL_WARN("Can't keep up! Loop took %llu ns\n", elapsed);
     }
   }
 

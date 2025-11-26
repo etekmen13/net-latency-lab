@@ -14,6 +14,7 @@
 struct Config {
   static constexpr uint16_t port = 49200;
   static constexpr uint16_t magic_number = 0x6584;
+  static constexpr uint32_t max_packets = 10'000;
 };
 
 std::atomic<bool> g_stop_requested{false};
@@ -109,7 +110,8 @@ int main(int argc, char **argv) {
     nll::BinaryLogger<nll::LogEntry> logger(output_path);
     nll::message_header packet;
 
-    while (!g_stop_requested) {
+    while (!g_stop_requested &&
+           g_stats.packets_processed < Config::max_packets) {
       ssize_t len =
           recvfrom(sock.get(), &packet, sizeof(packet), 0, nullptr, nullptr);
       uint64_t rx_ts = nll::real_ns();

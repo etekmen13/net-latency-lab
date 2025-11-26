@@ -37,9 +37,9 @@ inline const char *lvl_name(int lvl) noexcept {
   case 0:
     return "ERROR";
   case 1:
-    return "WARN-";
+    return "WARN ";
   case 2:
-    return "INFO-";
+    return "INFO ";
   default:
     return "DEBUG";
   }

@@ -19,7 +19,7 @@ struct ScopedSocket {
 };
 
 int main(int argc, char **argv) {
-  std::string dest_ip = "192.168.1.10\n";
+  std::string dest_ip = "127.0.0.1";
   if (argc > 1)
     dest_ip = argv[1];
 

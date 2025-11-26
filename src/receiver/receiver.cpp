@@ -1,3 +1,4 @@
+#include "common/csv_writer.hpp"
 #include "common/log.hpp"
 #include "common/packet.hpp"
 #include "common/spsc_queue.hpp"
@@ -20,6 +21,9 @@ struct Config {
   static constexpr bool single_thread_mode = false;
   static constexpr uint16_t port = 49200;
   static constexpr std::size_t queue_capacity = 1024;
+  static constexpr uint16_t magic_number = 0x6584; // ET
+  static constexpr std::string_view data_outfile =
+      "/root/net-latency-lab/analysis/data/latency.bin";
 };
 
 std::atomic<bool> g_stop_requested{false};
@@ -64,15 +68,22 @@ struct alignas(std::hardware_destructive_interference_size) Stats {
 
 Stats g_stats;
 
-void process_packet(const nll::message_header &mh, uint64_t rx_time) {
-  // no payload right now
+void process_packet(nll::BinaryLogger<nll::LogEntry> &logger,
+                    const nll::message_header &mh, uint64_t rx_time) {
+
+  if (mh.magic != Config::magic_number) {
+    NLL_ERROR("Warn: Invalid Magic: %hu\n", mh.magic);
+    return;
+  }
 
   int64_t latency = rx_time - mh.send_unix_ns;
 
-  g_stats.packets_processed++;
-  g_stats.accumulated_latency_ns += latency;
-
-  // output data as CSV (do this buffered or rarely to avoid IO bottleneck)
+  logger.log({.seq_idx = mh.seq_idx,
+              .tx_ts = mh.send_unix_ns,
+              .rx_ts = rx_time,
+              .latency_ns = latency});
+  g_stats.packets_processed.fetch_add(1, std::memory_order_relaxed);
+  g_stats.accumulated_latency_ns.fetch_add(latency, std::memory_order_relaxed);
 }
 constexpr std::size_t queue_capacity = 1024;
 void worker_routine(
@@ -83,6 +94,7 @@ void worker_routine(
 
   NLL_INFO("Worker thread started on Core 2.\n");
 
+  nll::BinaryLogger<nll::LogEntry> logger(Config::data_outfile);
   while (!stoken.stop_requested()) {
     const auto packet =
         queue.front(); // returns std::expected<const T*, std::string_view>
@@ -94,7 +106,7 @@ void worker_routine(
       asm volatile("yield");
 #endif
     } else {
-      process_packet(**packet, nll::real_ns());
+      process_packet(logger, **packet, nll::real_ns());
 
       queue.pop();
     }
@@ -120,11 +132,12 @@ int main(int argc, char **argv) {
     NLL_ERROR("Bind failed on port %d\n", Config::port);
     return 1;
   }
-
+  nll::BinaryLogger<nll::LogEntry> *logger = nullptr;
   nll::SPSCQueue<nll::message_header, queue_capacity> queue;
   std::optional<std::jthread> worker_thread;
-
   if constexpr (Config::single_thread_mode) {
+
+    *logger = nll::BinaryLogger<nll::LogEntry>(Config::data_outfile);
     nll::thread::pin_to_core(3);
     NLL_INFO("Runnin in SINGLE_THREAD_MODE (eRPC Style)\n");
   } else {
@@ -146,7 +159,7 @@ int main(int argc, char **argv) {
       packet.to_host();
       if constexpr (Config::single_thread_mode) {
 
-        process_packet(packet, rx_ts);
+        process_packet(*logger, packet, rx_ts);
       } else {
         if (!queue.push(std::move(packet))) {
           g_stats.dropped_packets++;

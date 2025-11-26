@@ -1,13 +1,14 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-
+import sys
+path = sys.argv[1]
 # 1. Load Data
-df = pd.read_csv("data.csv")
+df = pd.read_csv(path)
 
 # 2. Pre-process
 # Convert ns to microseconds (us) for readability
-df["latency_us"] = df["latency_ns"] / 1000.0
+df["latency_us"] = df["latency"] / 1000.0
 
 # Calculate Jitter: The difference in delay between consecutive packets
 # Formula: |Latency_n - Latency_{n-1}|
@@ -72,5 +73,3 @@ ax2.set_ylim(
 
 plt.tight_layout()
 plt.savefig("latency_plot.png", dpi=300)
-print("Plot saved to latency_plot.png")
-plt.show()

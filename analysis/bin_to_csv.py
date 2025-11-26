@@ -12,5 +12,5 @@ with open(path, 'rb') as f:
         data.append(struct.unpack(struct_fmt, chunk))
 
 df = pd.DataFrame(data, columns=['seq', 'tx', 'rx', 'latency'])
-df.to_csv('output_readable.csv', index=False)   
+df.to_csv('data/data.csv', index=False)   
 print(f"Converted {len(df)} records.")

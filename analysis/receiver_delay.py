@@ -72,4 +72,4 @@ ax2.set_ylim(
 )  # Zoom in, ignore huge outliers
 
 plt.tight_layout()
-plt.savefig("latency_plot.png", dpi=300)
+plt.savefig("data/latency_plot.png", dpi=299)

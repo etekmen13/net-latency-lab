@@ -1,0 +1,14 @@
+[
+{
+  "directory": "/root/net-latency-lab/build",
+  "command": "/usr/bin/c++  -I/root/net-latency-lab/src -std=gnu++20 -o CMakeFiles/receiver.dir/src/receiver/receiver.cpp.o -c /root/net-latency-lab/src/receiver/receiver.cpp",
+  "file": "/root/net-latency-lab/src/receiver/receiver.cpp",
+  "output": "CMakeFiles/receiver.dir/src/receiver/receiver.cpp.o"
+},
+{
+  "directory": "/root/net-latency-lab/build",
+  "command": "/usr/bin/c++  -I/root/net-latency-lab/src -std=gnu++20 -o CMakeFiles/sender.dir/src/sender/sender.cpp.o -c /root/net-latency-lab/src/sender/sender.cpp",
+  "file": "/root/net-latency-lab/src/sender/sender.cpp",
+  "output": "CMakeFiles/sender.dir/src/sender/sender.cpp.o"
+}
+]

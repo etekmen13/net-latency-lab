@@ -1,6 +1,5 @@
 #include <arpa/inet.h>
 #include <cstring>
-#include <iostream>
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -36,7 +35,7 @@ int main(int argc, char **argv) {
            port);
 
   uint32_t seq = 0;
-  const uint64_t interval_ns = 1'000'000; // 1ms = 1M ns
+  const uint64_t interval_ns = 1'000'000;
 
   while (true) {
     uint64_t start_loop = nll::mono_ns();

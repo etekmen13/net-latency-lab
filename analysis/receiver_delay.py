@@ -12,32 +12,33 @@ args = parser.parse_args()
 
 df = pd.read_csv(args.filename)
 
-# 2. Pre-process
-# Convert ns to microseconds (us) for readability
 df["latency_us"] = df["latency"] / 1000.0
 
-# Calculate Jitter: The difference in delay between consecutive packets
-# Formula: |Latency_n - Latency_{n-1}|
 df["jitter_us"] = df["latency_us"].diff().abs()
 
-# Filter out the first 5 packets (ARP/Cold Start artifacts) for statistics
 stats_df = df.iloc[5:]
 
-# 3. Print Statistics (for the report table)
+lat_median = stats_df['latency_us'].median()
+jit_mean = stats_df['jitter_us'].mean()
+jit_99 = stats_df['jitter_us'].quantile(0.99)
 print("=== Statistics (Excluding Warm-up) ===")
 print(f"Count: {len(stats_df)}")
-print(f"Median Raw Latency: {stats_df['latency_us'].median():.2f} us")
-print(f"Mean Jitter:        {stats_df['jitter_us'].mean():.2f} us")
-print(f"99th %ile Jitter:   {stats_df['jitter_us'].quantile(0.99):.2f} us")
-summary = pd.DataFrame()
-summary['latency_median'] = stats_df['latency_us'].median()
-summary['jitter_mean'] = stats_df['jitter_us'].mean()
-summary['jitter_99'] = stats_df['jitter_us'].quantile(0.99)
-summary.to_csv(args.output + "/summary.csv",index=False)
-# 4. Plotting
+print(f"Median Raw Latency: {lat_median:.2f} us")
+print(f"Mean Jitter:        {jit_mean:.2f} us")
+print(f"99th %ile Jitter:   {jit_99:.2f} us")
+
+# Construct DataFrame using a Dictionary
+# NOTE: The brackets [] around variables are CRITICAL. 
+# They tell Pandas "This is a list containing one row".
+summary = pd.DataFrame({
+    'latency_median': [lat_median],
+    'jitter_mean':    [jit_mean],
+    'jitter_99':      [jit_99]
+})
+
+summary.to_csv(args.output + "/summary.csv", index=False)
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
-# Plot A: Raw Latency (One-Way Delay)
 ax1.plot(
     df["seq"],
     df["latency_us"],
@@ -55,7 +56,6 @@ ax1.set_title(
 ax1.grid(True, linestyle="--", alpha=0.6)
 ax1.legend(loc="upper right")
 
-# Add an annotation about the negative values
 median_lat = stats_df["latency_us"].median()
 ax1.axhline(
     y=median_lat, color="r", linestyle=":", label=f"Median ({median_lat:.1f}µs)"
@@ -69,7 +69,6 @@ ax1.text(
     backgroundcolor="white",
 )
 
-# Plot B: Jitter (Stability)
 ax2.plot(df["seq"], df["jitter_us"], color="#ff7f0e", alpha=0.8, linewidth=0.8)
 ax2.set_ylabel("Jitter (µs)")
 ax2.set_xlabel("Sequence Number")
@@ -79,7 +78,7 @@ ax1.set_title(
 ax2.grid(True, linestyle="--", alpha=0.6)
 ax2.set_ylim(
     0, stats_df["jitter_us"].quantile(0.99) * 2
-)  # Zoom in, ignore huge outliers
+)  
 
 plt.tight_layout()
 plt.savefig(args.output  +"/plot.png", dpi=298)

@@ -25,6 +25,7 @@ struct Config {
   static constexpr uint16_t magic_number = 0x6584; // ET
   static constexpr std::string_view default_outfile =
       "/root/net-latency-lab/analysis/data/latency.bin";
+  static constexpr uint32_t max_packets = 10'000;
 };
 
 std::atomic<bool> g_stop_requested{false};
@@ -154,13 +155,13 @@ int main(int argc, char **argv) {
   } else {
 
     nll::thread::pin_to_core(2);
-    worker_thread.emplace(worker_routine, std::ref(queue), logger);
+    worker_thread.emplace(worker_routine, std::ref(queue), std::ref(logger));
     NLL_INFO("Running in WORKER_THREAD_MODE\n");
   }
   nll::thread::set_realtime_priority();
   nll::message_header packet;
 
-  while (!g_stop_requested) {
+  while (!g_stop_requested && g_stats.packets_processed < Config::max_packets) {
     ssize_t len =
         recvfrom(sock.get(), &packet, sizeof(packet), 0, nullptr, nullptr);
 

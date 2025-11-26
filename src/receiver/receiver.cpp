@@ -8,6 +8,7 @@
 #include <bits/types/struct_timeval.h>
 #include <csignal>
 #include <cstdio>
+#include <filesystem>
 #include <netinet/in.h>
 #include <optional>
 #include <stop_token>
@@ -22,7 +23,7 @@ struct Config {
   static constexpr uint16_t port = 49200;
   static constexpr std::size_t queue_capacity = 1024;
   static constexpr uint16_t magic_number = 0x6584; // ET
-  static constexpr std::string_view data_outfile =
+  static constexpr std::string_view default_outfile =
       "/root/net-latency-lab/analysis/data/latency.bin";
 };
 
@@ -86,15 +87,14 @@ void process_packet(nll::BinaryLogger<nll::LogEntry> &logger,
   g_stats.accumulated_latency_ns.fetch_add(latency, std::memory_order_relaxed);
 }
 constexpr std::size_t queue_capacity = 1024;
-void worker_routine(
-    std::stop_token stoken,
-    nll::SPSCQueue<nll::message_header, queue_capacity> &queue) {
+void worker_routine(std::stop_token stoken,
+                    nll::SPSCQueue<nll::message_header, queue_capacity> &queue,
+                    nll::BinaryLogger<nll::LogEntry> &logger) {
 
   nll::thread::pin_to_core(3);
 
   NLL_INFO("Worker thread started on Core 2.\n");
 
-  nll::BinaryLogger<nll::LogEntry> logger(Config::data_outfile);
   while (!stoken.stop_requested()) {
     const auto packet =
         queue.front(); // returns std::expected<const T*, std::string_view>
@@ -115,7 +115,19 @@ void worker_routine(
 
 int main(int argc, char **argv) {
   std::signal(SIGINT, signal_handler);
+  std::filesystem::path output_path = Config::default_outfile;
+  if (argc <= 1) {
+    NLL_INFO("Please provide an output path for data writing.\n");
+  }
+  if (argc > 1) {
+    output_path = argv[1];
+  }
 
+  if (output_path.has_parent_path()) {
+    std::filesystem::create_directories(output_path.parent_path());
+  }
+
+  NLL_INFO("Logging data to %s", output_path.c_str());
   ScopedSocket sock;
   if (!sock.is_valid()) {
     NLL_ERROR("Failed to create socket\n");
@@ -132,18 +144,17 @@ int main(int argc, char **argv) {
     NLL_ERROR("Bind failed on port %d\n", Config::port);
     return 1;
   }
-  nll::BinaryLogger<nll::LogEntry> *logger = nullptr;
+  nll::BinaryLogger<nll::LogEntry> logger(output_path);
   nll::SPSCQueue<nll::message_header, queue_capacity> queue;
   std::optional<std::jthread> worker_thread;
   if constexpr (Config::single_thread_mode) {
 
-    *logger = nll::BinaryLogger<nll::LogEntry>(Config::data_outfile);
     nll::thread::pin_to_core(3);
     NLL_INFO("Runnin in SINGLE_THREAD_MODE (eRPC Style)\n");
   } else {
 
     nll::thread::pin_to_core(2);
-    worker_thread.emplace(worker_routine, std::ref(queue));
+    worker_thread.emplace(worker_routine, std::ref(queue), logger);
     NLL_INFO("Running in WORKER_THREAD_MODE\n");
   }
   nll::thread::set_realtime_priority();
@@ -159,7 +170,7 @@ int main(int argc, char **argv) {
       packet.to_host();
       if constexpr (Config::single_thread_mode) {
 
-        process_packet(*logger, packet, rx_ts);
+        process_packet(logger, packet, rx_ts);
       } else {
         if (!queue.push(std::move(packet))) {
           g_stats.dropped_packets++;

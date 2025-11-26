@@ -2,9 +2,15 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
-path = sys.argv[1]
-# 1. Load Data
-df = pd.read_csv(path)
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument('filename')
+parser.add_argument("-o","--output",type=str, required=True)
+
+parser.parse_args()
+
+df = pd.read_csv(args.filename)
 
 # 2. Pre-process
 # Convert ns to microseconds (us) for readability
@@ -23,7 +29,11 @@ print(f"Count: {len(stats_df)}")
 print(f"Median Raw Latency: {stats_df['latency_us'].median():.2f} us")
 print(f"Mean Jitter:        {stats_df['jitter_us'].mean():.2f} us")
 print(f"99th %ile Jitter:   {stats_df['jitter_us'].quantile(0.99):.2f} us")
-
+summary = pd.DataFrame()
+summary['latency_median'] = stats_df['latency_us'].median()
+summary['jitter_mean'] = stats_df['jitter_us'].mean()
+summary['jitter_99'] = stats_df['jitter_us'].quantile(0.99)
+summary.to_csv(args.output + "summary.csv",index=False)
 # 4. Plotting
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
@@ -72,4 +82,4 @@ ax2.set_ylim(
 )  # Zoom in, ignore huge outliers
 
 plt.tight_layout()
-plt.savefig("data/latency_plot.png", dpi=299)
+plt.savefig(args.output + "plot.png", dpi=299)

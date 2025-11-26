@@ -19,7 +19,7 @@ struct ScopedSocket {
 };
 
 int main(int argc, char **argv) {
-  std::string dest_ip = "127.0.0.1";
+  std::string dest_ip = "192.168.1.10\n";
   if (argc > 1)
     dest_ip = argv[1];
 
@@ -31,8 +31,8 @@ int main(int argc, char **argv) {
   dest_addr.sin_port = htons(port);
   dest_addr.sin_addr.s_addr = inet_addr(dest_ip.c_str());
 
-  NLL_INFO("Sending to %s:%d at steady rate (1ms interval)...", dest_ip.c_str(),
-           port);
+  NLL_INFO("Sending to %s:%d at steady rate (1ms interval)...\n",
+           dest_ip.c_str(), port);
 
   uint32_t seq = 0;
   const uint64_t interval_ns = 1'000'000;
@@ -53,7 +53,7 @@ int main(int argc, char **argv) {
                           (struct sockaddr *)&dest_addr, sizeof(dest_addr));
 
     if (sent < 0)
-      NLL_ERROR("Send failed");
+      NLL_ERROR("Send failed\n");
 
     uint64_t end_loop = nll::mono_ns();
     uint64_t elapsed = end_loop - start_loop;
@@ -61,7 +61,7 @@ int main(int argc, char **argv) {
     if (elapsed < interval_ns) {
       nll::sleep_ns(interval_ns - elapsed);
     } else {
-      NLL_WARN("Can't keep up! Loop took %llu ns", elapsed);
+      NLL_WARN("Can't keep up! Loop took %llu ns\n", elapsed);
     }
   }
 

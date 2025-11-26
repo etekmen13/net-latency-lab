@@ -55,14 +55,12 @@ void process_packet(nll::BinaryLogger<nll::LogEntry> &logger,
                     const nll::message_header &mh, uint64_t rx_time) {
 
   if (mh.magic != Config::magic_number) {
-    // Replaced std::println with NLL_WARN
     NLL_WARN("Invalid Magic: %x\n", mh.magic);
     return;
   }
 
   int64_t latency = rx_time - mh.send_unix_ns;
 
-  // Direct Write (Blocking if buffer full)
   logger.log({.seq_idx = mh.seq_idx,
               .tx_ts = mh.send_unix_ns,
               .rx_ts = rx_time,
@@ -112,7 +110,6 @@ int main(int argc, char **argv) {
     nll::message_header packet;
 
     while (!g_stop_requested) {
-      // BLOCKING I/O
       ssize_t len =
           recvfrom(sock.get(), &packet, sizeof(packet), 0, nullptr, nullptr);
       uint64_t rx_ts = nll::real_ns();

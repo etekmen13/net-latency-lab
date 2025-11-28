@@ -1,99 +1,101 @@
 # net-latency-lab
 
-**net-latency-lab** is a low-latency network benchmarking tool designed to measure packet delay distributions with high precision. It supports distribured measurement across Raspberry Pis as well as local loopback simulations for development and debugging.
+**net-latency-lab** is a low-latency network benchmarking tool designed to measure packet delay distributions with high precision. It supports distributed measurement across Raspberry Pis as well as local loopback simulations for development and debugging.
 
-## Setup
+## Prerequisites
 
-### Prerequisites
-1. Linux distro with `AF_XDP` support.
-2. Linux networking tool: `chrony` (see Installation)
-3. C++ toolchain: `g++`, `cmake`, `make`
-4. Python 3 with `venv` support
-5. SSH access (for remote only): Passwordless SSH key access to the remote node(s).
+* **Operating System:** Linux distribution with `AF_XDP` support.
+* **Networking:** `chrony` (for hardware clock synchronization).
+* **Toolchain:** `g++`, `cmake`, `make`.
+* **Python:** Python 3 with `venv` support.
+* **Remote Access:** Passwordless SSH key access to remote nodes (required only for distributed testing).
 
-### Installation
+## Installation
 
-1. Clone the repository:
+### 1. Install System Dependencies
 ```sh
-git clone https://github.com/etekmen13/net-latency-lab.git
+sudo apt-get install chrony
+```
+
+### 2. Clone Repository
+```sh
+git clone [https://github.com/etekmen13/net-latency-lab.git](https://github.com/etekmen13/net-latency-lab.git)
 cd net-latency-lab
 ```
-2. Set up the Python Environment
-The script expects a virtual environment `.venv` in the root directory
-```sh 
+
+### 3. Configure Python Environment
+The analysis scripts require a virtual environment located in the root directory.
+```sh
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
-3. Build executable
+
+### 4. Build Executable
 ```sh
 mkdir build && cd build
 cmake ..
 make
 ```
 
-4. Install Linux dependencies
+### 5. System Tuning (Highly Recommended)
+To minimize jitter, run the setup script to set the CPU scaling governor to 'performance' and isolate core 3 from interrupt requests (IRQ).
+
+*Note: These settings persist until reboot or until `scripts/restore_env.sh` is executed. This script is not compatible with WSL/VM environments.*
+
 ```sh
-sudo apt-get install chrony
+sudo ./scripts/setup_env.sh
 ```
 
-5. Run setup script (optional, recommended)
-This sets the cpu scaling governor to 'performance', and prevents interrupt requests from core 3.
-These settings will persist until your reboot your computer, or by running `restore_env.sh` in scripts.
-Note: This will not work on WSL/VMs.
+## Implementation Variants
+
+The project includes three implementations to demonstrate different latency characteristics:
+
+1.  **Baseline:** Single-threaded C++ implementation using the default Linux network stack.
+2.  **Threaded:** Multi-threaded architecture utilizing a lock-free SPSC (Single Producer Single Consumer) queue to decouple the receiver and logger.
+3.  **Kernel Bypass:** High-performance implementation using `AF_XDP` to zero-copy read packet data directly from the NIC ring buffer.
+
+## Usage: Local Simulation
+
+Use local loopback mode for development, logic verification, and debugging.
+
+**Command Syntax:**
 ```sh
-cd scripts
-sudo ./setup_env.sh
-```
-
-## Local Usage
-
-### Versions
-There are three versions of the program:
-1. Baseline: Single threaded C++ using the default Linux network stack.
-2. Threaded: One receiver thread, one logger thread, using a lock-free SPSC queue.
-3. Kernel Bypass: Uses `AF_XDP` to Zero-Copy read packet data from the NIC's ring buffer.
-
-To test each:
-
-```
 ./scripts/run_local.sh [baseline | threaded | bypass]
 ```
 
-## Remote Usage
+**Note:** It is recommended to run with `sudo` to enable FIFO scheduling (real-time priority) for the receiver process.
 
-This mode uses 3-node architecture
+## Usage: Distributed Benchmarking
 
-1. Receiver node: runs the `receiver_xxx` binary
-2. Sender node: runs the `sender` binary
-3. Orchestrator node (your computer): triggers builds, starts processes via SSH, and aggregates data.
+This configuration utilizes a three-node architecture to ensure accurate measurement without observer effect.
+
+1.  **Receiver Node:** Runs the `receiver_xxx` binary.
+2.  **Sender Node:** Runs the `sender` binary.
+3.  **Orchestrator Node (Host):** Triggers builds, manages SSH processes, and aggregates data.
 
 ### Network Requirements
+For valid microsecond-level benchmarks, the Receiver and Sender nodes should be connected via a physical Ethernet switch. Wireless connections or routing across the public internet will introduce significant jitter, obscuring the performance differences between implementations.
 
-This lab was intended for LAN only. For valid microsecond-level benchmarks, the receiver and sender nodes should be connected via physical Ethernet switch. Using Wi-Fi or routing across the internet will introduce jitter that obscures code performance.
+### Configuration
+Before executing the orchestrator script, perform the following on the **Orchestrator Node**:
 
-### Remote Configuration
-
-Before running the orchestrator script (`run_remote.sh`), ensure the following:
-
-- The repository must be cloned to the **exact same path** on both remote nodes (e.g. `home/pi/net-latency-lab`)
-
-- You must have passwordless SSH access from the Orchestrator to both remote nodes:
-  ```sh
-  ssh-copy-id root@<RX_IP>
-  ssh-copy-id root@<TX_IP>
-  ```
-- Open `scripts/run_remote.sh` and update the `REMOTE_REPO_PATH` variable to match the location on the remote nodes:
-  ```sh
-  # Inside scripts/run_remote.sh
-  REMOTE_REPO_PATH="/home/pi/net-latency-lab"
-  REMOTE_USER="root"
-  ```
-- (Optional, recommended) Run `sudo ./scripts/setup_env.sh` on both remote nodes to improve performance and benchmark quality. 
+1.  Ensure the repository is cloned to the **exact same path** on the Orchestrator, Receiver, and Sender nodes (e.g., `/home/pi/net-latency-lab`).
+2.  Verify passwordless SSH access to both remote nodes:
+    ```sh
+    ssh-copy-id root@<RX_IP>
+    ssh-copy-id root@<TX_IP>
+    ```
+3.  Update the `REMOTE_REPO_PATH` variable in `scripts/run_remote.sh` to match the directory on the remote nodes:
+    ```bash
+    # Inside scripts/run_remote.sh
+    REMOTE_REPO_PATH="/home/pi/net-latency-lab"
+    REMOTE_USER="root"
+    ```
+4.  (Recommended) Run `sudo ./scripts/setup_env.sh` on both remote nodes.
 
 ### Execution
-
-Run the orchestrator script from your computer. It will SSH into the remote nodes, build the latest code, sync clocks, and execute the benchmark.
+Run the orchestrator script from the Host machine. It will automatically build the latest code on remote nodes, synchronize clocks, and execute the benchmark.
 
 ```sh
 # Syntax: ./scripts/run_remote.sh <mode> <RX_IP> <TX_IP>
@@ -104,10 +106,9 @@ Run the orchestrator script from your computer. It will SSH into the remote node
 
 ## Data Analysis
 
-Benchmark results are stored in `analysis/data`. Each benchmark is labeled `[local/remote]_[mode]_[timestamp]`, and contain the following:
-```sh
-- data.bin    # binary structs written by the receiver program
-- data.csv    # human-readable data from bin_to_csv.py
-- summary.csv # summary stats
-- plot.png    # histogram of full data
-```
+Benchmark results are automatically aggregated in the `analysis/data` directory. Each experiment generates a timestamped folder containing:
+
+* **`data.bin`**: Raw binary structs captured by the receiver.
+* **`data.csv`**: Decoded human-readable dataset.
+* **`summary.csv`**: Statistical summary (Min, Max, Mean, Jitter, Percentiles).
+* **`plot.png`**: Latency distribution histogram and timeline.

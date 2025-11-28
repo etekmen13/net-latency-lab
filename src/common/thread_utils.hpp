@@ -36,4 +36,28 @@ inline void set_realtime_priority() {
   }
 }
 
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
+#include <immintrin.h>
+#endif
+
+// Portable CPU relax function
+inline void cpu_relax() {
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
+  _mm_pause(); // Intel/AMD pause
+#elif defined(__aarch64__) || defined(__arm__)
+  __asm__ __volatile__("isb"); // ARM barrier/pause equivalent
+#else
+  // Fallback for unknown architectures
+  // asm volatile ("nop");
+#endif
+}
+
+#ifdef __cpp_lib_hardware_interference_size
+using std::hardware_constructive_interference_size;
+using std::hardware_destructive_interference_size;
+#else
+// 64 bytes on x86-64 | 128 bytes on ARM64/Apple Silicon
+constexpr std::size_t hardware_destructive_interference_size = 64;
+constexpr std::size_t hardware_constructive_interference_size = 64;
+#endif
 }; // namespace nll::thread

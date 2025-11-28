@@ -35,13 +35,13 @@ namespace detail {
 inline const char *lvl_name(int lvl) noexcept {
   switch (lvl) {
   case 0:
-    return "ERR";
+    return "ERROR";
   case 1:
-    return "WRN";
+    return "WARN ";
   case 2:
-    return "INF";
+    return "INFO ";
   default:
-    return "DBG";
+    return "DEBUG";
   }
 }
 

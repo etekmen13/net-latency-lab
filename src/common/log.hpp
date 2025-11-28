@@ -1,15 +1,5 @@
 #pragma once
 
-/*
-
-I want speed, so no iostream. fprintf and line buffering
-I want 4 log levels
-0=ERROR, 1=WARN, 2=INFO, 3=DEBUG
-
-I'll also add a threadsafe flag so the logs aren't garbled from multiple
-threads.
-*/
-
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>

@@ -1,7 +1,7 @@
 analysis/data/
 build/
 .cache/
-
+.venv/
 .clang-format
 compile_commands.json
 

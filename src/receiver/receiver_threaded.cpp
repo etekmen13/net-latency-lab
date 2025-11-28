@@ -101,11 +101,7 @@ void worker_routine(std::stop_token stoken,
         queue.front(); // returns std::expected<const T*, std::string_view>
     if (!packet) {
       // spin loop
-#if defined(__x86_64__)
-      __mm_pause();
-#elif defined(__aarch64__)
-      asm volatile("yield");
-#endif
+      nll::thread::cpu_relax();
     } else {
       process_packet(logger, **packet, nll::real_ns());
 

@@ -10,6 +10,8 @@
 #include <utility>
 namespace nll {
 
+constexpr std::size_t cache_line_size = 64;
+
 template <typename T>
 concept Queueable = std::movable<T> && std::default_initializable<T>;
 
@@ -82,10 +84,8 @@ public:
 private:
   static constexpr std::size_t mask_ = Capacity - 1;
 
-  alignas(std::hardware_destructive_interference_size)
-      std::atomic<std::size_t> head_;
-  alignas(std::hardware_destructive_interference_size)
-      std::atomic<std::size_t> tail_;
+  alignas(cache_line_size) std::atomic<std::size_t> head_;
+  alignas(cache_line_size) std::atomic<std::size_t> tail_;
 
   std::array<T, Capacity> buffer_;
 };

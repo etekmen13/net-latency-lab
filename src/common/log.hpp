@@ -10,11 +10,11 @@ I'll also add a threadsafe flag so the logs aren't garbled from multiple
 threads.
 */
 
+#include "common/time.hpp"
+#include <cinttypes>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
-
-#include "common/time.hpp"
 
 #ifndef NLL_LOG_LEVEL
 #define NLL_LOG_LEVEL 3
@@ -83,14 +83,13 @@ inline void vlogf(int lvl, const char *fmt, va_list ap) {
   const char *name = detail::lvl_name(lvl);
 
   std::fputs(color, stderr);
-  std::fprintf(stderr, "[%s %12llu.%09llu] ", name,
+  std::fprintf(stderr, "[%s %12" PRIu64 " %09" PRIu64 "] ", name,
                static_cast<std::uint64_t>(t / a_billi), // s
                static_cast<std::uint64_t>(t % a_billi)  // ns
   );
   std::vfprintf(stderr, fmt, ap);
-  std::fputs("\x1b[0m", stderr); // reset color and flush
+  std::fputs("\x1b[0m", stderr);
 }
-// wrapper with variadic args
 inline void logf(int lvl, const char *fmt, ...) {
   va_list ap;
   va_start(ap, fmt);

@@ -6,7 +6,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include_directories(${CMAKE_SOURCE_DIR}/src)
 
-add_executable(receiver src/receiver/receiver.cpp)
+add_compile_options(-O3 -march=native -Wall -Wextra)
+
+add_executable(receiver src/receiver/receiver_threaded.cpp)
 target_link_libraries(receiver pthread)
 
 add_executable(sender src/sender/sender.cpp)

@@ -2,6 +2,7 @@ analysis/data/
 build/
 .cache/
 .venv/
+__pycache__/
 .clang-format
 compile_commands.json
 

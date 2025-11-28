@@ -29,7 +29,11 @@ int main(int argc, char **argv) {
   sockaddr_in dest_addr{};
   dest_addr.sin_family = AF_INET;
   dest_addr.sin_port = htons(port);
-  dest_addr.sin_addr.s_addr = inet_addr(dest_ip.c_str());
+
+  if (inet_pton(AF_INET, dest_ip.c_str(), &dest_addr.sin_addr) <= 0) {
+    NLL_ERROR("Invalid IP address format: %s\n", dest_ip.c_str());
+    return 1;
+  }
 
   NLL_INFO("Sending to %s:%d at steady rate (1ms interval)...\n",
            dest_ip.c_str(), port);
@@ -53,7 +57,7 @@ int main(int argc, char **argv) {
                           (struct sockaddr *)&dest_addr, sizeof(dest_addr));
 
     if (sent < 0)
-      NLL_ERROR("Send failed");
+      NLL_ERROR("Send failed\n");
 
     uint64_t end_loop = nll::mono_ns();
     uint64_t elapsed = end_loop - start_loop;

@@ -58,7 +58,7 @@ cleanup() {
         fi
         
         python3 "$PROJECT_ROOT/analysis/bin_to_csv.py" "$EXP_DIR/data.bin" "$EXP_DIR/data.csv"
-        python3 "$PROJECT_ROOT/analysis/receiver_delay.py" "$EXP_DIR/data.csv" --output "$EXP_DIR"
+        python3 "$PROJECT_ROOT/analysis/analyze.py" "$EXP_DIR/data.csv" --output "$EXP_DIR"
         
         echo "Done! Report generated in: $EXP_DIR"
     else

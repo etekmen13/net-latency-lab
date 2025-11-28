@@ -63,7 +63,7 @@ echo ""
 echo "[3/3] Generating Report..."
 if [ -f "$BIN_FILE" ]; then
     python3 "$PROJECT_ROOT/analysis/bin_to_csv.py" "$BIN_FILE" "$CSV_FILE"
-    python3 "$PROJECT_ROOT/analysis/receiver_delay.py" "$CSV_FILE" --output "$EXP_DIR"
+    python3 "$PROJECT_ROOT/analysis/analyze.py" "$CSV_FILE" --output "$EXP_DIR"
     echo "Done. Results in $EXP_DIR"
 else
     echo "Error: No data generated."

@@ -19,7 +19,7 @@ sudo apt-get install chrony
 
 ### 2. Clone Repository
 ```sh
-git clone [https://github.com/etekmen13/net-latency-lab.git](https://github.com/etekmen13/net-latency-lab.git)
+git clone https://github.com/etekmen13/net-latency-lab.git
 cd net-latency-lab
 ```
 

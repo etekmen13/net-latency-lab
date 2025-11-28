@@ -4,17 +4,24 @@
 set -e 
 
 # Usage check
-if [ -z "$1" ]; then
-  echo "Usage: $0 <experiment_name>"
+if [[ -z "$1" || -z "$2" ]]; then
+  echo "Usage: $0 <experiment_name> <receiver_ip>"
   exit 1
 fi
 
-RX_IP="192.168.1.10"
+RX_IP=$2
+EXP_NAME=$1
+
+# --- CHANGE 1: Detect Local Mode ---
+IS_LOCAL=false
+if [[ "$RX_IP" == "127.0.0.1" || "$RX_IP" == "localhost" ]]; then
+    IS_LOCAL=true
+    echo ">> Running in LOCAL SIMULATION mode (127.0.0.1)"
+fi
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")" 
 
-EXP_NAME=$1
 TIMESTAMP=$(date +"%Y-%m-%d-%H-%M-%S")
 GIT_HASH=$(git rev-parse --short HEAD)
 
@@ -31,12 +38,16 @@ SUMMARY_FILE="$EXP_DIR/summary.csv"
 PLOT_FILE="$EXP_DIR/plot.png"
 METADATA_FILE="$EXP_DIR/metadata.txt"
 
-# --- IMPROVEMENT 2: Cleanup Trap ---
-# If the script is killed, ensure we kill the remote sender
+# --- CHANGE 2: Conditional Cleanup ---
 cleanup() {
-    echo "Stopping remote sender on pi-b..."
-    # Sends SIGINT (Ctrl+C) to the sender process named 'sender_binary'
-    ssh root@pi-b "pkill -2 sender" || true 
+    if [ "$IS_LOCAL" = true ]; then
+        echo "Stopping local sender..."
+        # Kill the local process named 'sender'
+        pkill -2 sender || true 
+    else
+        echo "Stopping remote sender on pi-b..."
+        ssh root@pi-b "pkill -2 sender" || true 
+    fi
 }
 trap cleanup EXIT
 
@@ -44,6 +55,7 @@ echo "========================================"
 echo " Experiment: $EXP_NAME"
 echo " Output:     $EXP_DIR"
 echo " Commit:     $GIT_HASH"
+echo " Mode:       $( [ "$IS_LOCAL" = true ] && echo "Local" || echo "Remote (pi-b)" )"
 echo "========================================"
 
 # Initialization
@@ -67,20 +79,35 @@ echo "[Setup] Configuring environment..."
 
 echo "[Setup] Syncing clocks..."
 "$SCRIPT_DIR/sync_clocks.sh"
-ssh root@pi-b "$SCRIPT_DIR/sync_clocks.sh" 
+
+# --- CHANGE 3: Skip Remote Sync if Local ---
+if [ "$IS_LOCAL" = false ]; then
+    ssh root@pi-b "$SCRIPT_DIR/sync_clocks.sh" 
+fi
 
 # Save Metadata
 echo "Experiment: $EXP_NAME" > "$METADATA_FILE"
 echo "Timestamp: $TIMESTAMP" >> "$METADATA_FILE"
 echo "Git Commit: $GIT_HASH" >> "$METADATA_FILE"
 echo "Compiler: $(g++ --version | head -n 1)" >> "$METADATA_FILE"
+echo "Mode: $( [ "$IS_LOCAL" = true ] && echo "Local" || echo "Remote" )" >> "$METADATA_FILE"
 
-# --- IMPROVEMENT 3: Auto-Start Sender ---
-echo "[1/4] Starting Remote Sender (pi-b)..."
-# Adjust the path to where the binary lives on Pi-B
-ssh -f root@pi-b "nohup $PROJECT_ROOT/build/sender $RX_IP > /tmp/sender.log 2>&1 &"
+# --- CHANGE 4: Fork Local vs Remote Sender ---
+echo "[1/4] Starting Sender..."
+
+if [ "$IS_LOCAL" = true ]; then
+    # Local: Run directly in background (&)
+    # We assume 'sender' is in the same build folder locally
+    nohup "$PROJECT_ROOT/build/sender" "$RX_IP" > /tmp/sender.log 2>&1 &
+    SENDER_PID=$!
+    echo "      Local sender started (PID $SENDER_PID)"
+else
+    # Remote: Run via SSH
+    ssh -f root@pi-b "nohup $PROJECT_ROOT/build/sender $RX_IP > /tmp/sender.log 2>&1 &"
+    echo "      Remote sender started on pi-b"
+fi
+
 echo "[2/4] Running Receiver... (Press Ctrl+C to stop)"
-# We allow this to fail (Ctrl+C returns non-zero usually) so we turn off set -e temporarily
 set +e 
 "$PROJECT_ROOT/build/receiver" "$BIN_FILE"
 RECEIVER_EXIT_CODE=$?

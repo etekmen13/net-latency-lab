@@ -5,8 +5,8 @@ import sys
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('filename')
-parser.add_argument("-o","--output",type=str, required=True)
+parser.add_argument("filename")
+parser.add_argument("-o", "--output", type=str, required=True)
 
 args = parser.parse_args()
 
@@ -18,23 +18,18 @@ df["jitter_us"] = df["latency_us"].diff().abs()
 
 stats_df = df.iloc[5:]
 
-lat_median = stats_df['latency_us'].median()
-jit_mean = stats_df['jitter_us'].mean()
-jit_99 = stats_df['jitter_us'].quantile(0.99)
+lat_median = stats_df["latency_us"].median()
+jit_mean = stats_df["jitter_us"].mean()
+jit_99 = stats_df["jitter_us"].quantile(0.99)
 print("=== Statistics (Excluding Warm-up) ===")
 print(f"Count: {len(stats_df)}")
 print(f"Median Raw Latency: {lat_median:.2f} us")
 print(f"Mean Jitter:        {jit_mean:.2f} us")
 print(f"99th %ile Jitter:   {jit_99:.2f} us")
 
-# Construct DataFrame using a Dictionary
-# NOTE: The brackets [] around variables are CRITICAL. 
-# They tell Pandas "This is a list containing one row".
-summary = pd.DataFrame({
-    'latency_median': [lat_median],
-    'jitter_mean':    [jit_mean],
-    'jitter_99':      [jit_99]
-})
+summary = pd.DataFrame(
+    {"latency_median": [lat_median], "jitter_mean": [jit_mean], "jitter_99": [jit_99]}
+)
 
 summary.to_csv(args.output + "/summary.csv", index=False)
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
@@ -76,9 +71,7 @@ ax1.set_title(
     "Figure 2: Inter-Arrival Jitter (Stability)", fontsize=12, fontweight="bold"
 )
 ax2.grid(True, linestyle="--", alpha=0.6)
-ax2.set_ylim(
-    0, stats_df["jitter_us"].quantile(0.99) * 2
-)  
+ax2.set_ylim(0, stats_df["jitter_us"].quantile(0.99) * 2)
 
 plt.tight_layout()
-plt.savefig(args.output  +"/plot.png", dpi=298)
+plt.savefig(args.output + "/plot.png", dpi=298)

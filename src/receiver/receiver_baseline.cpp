@@ -8,15 +8,19 @@
 #include <csignal>
 #include <cstdio>
 #include <filesystem>
+#include <getopt.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 
-struct Config {
-  static constexpr uint16_t port = 49200;
-  static constexpr uint16_t magic_number = 0x6584;
-  static constexpr uint32_t max_packets = 10'000;
+struct GlobalConfig {
+  uint16_t port = 49200;
+  uint16_t magic_number = 0x6584;
+  std::filesystem::path output_path = "latency_baseline.bin";
+  uint32_t max_packets = 100'000;
+  int cpu_affinity = 3;
 };
 
+GlobalConfig g_config;
 std::atomic<bool> g_stop_requested{false};
 
 void signal_handler(int) { g_stop_requested = true; }
@@ -27,7 +31,6 @@ class ScopedSocket {
 public:
   ScopedSocket() : fd_(socket(AF_INET, SOCK_DGRAM, 0)) {
     if (fd_ >= 0) {
-      // 100ms timeout
       struct timeval tv{.tv_sec = 0, .tv_usec = 100 * 1000};
       setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     }
@@ -55,7 +58,7 @@ Stats g_stats;
 void process_packet(nll::BinaryLogger<nll::LogEntry> &logger,
                     const nll::message_header &mh, uint64_t rx_time) {
 
-  if (mh.magic != Config::magic_number) {
+  if (mh.magic != g_config.magic_number) {
     NLL_WARN("Invalid Magic: %x\n", mh.magic);
     return;
   }
@@ -71,16 +74,43 @@ void process_packet(nll::BinaryLogger<nll::LogEntry> &logger,
   g_stats.accumulated_latency_ns.fetch_add(latency, std::memory_order_relaxed);
 }
 
+void print_usage() {
+  printf("Usage: receiver_baseline [options]\n");
+  printf("Options:\n");
+  printf("  -o, --output <path>    Path to output bin file\n");
+  printf("  -p, --port <port>      UDP port to bind (default: 49200)\n");
+  printf("  -c, --cpu <id>         CPU core to pin to (default: 3)\n");
+}
+
 int main(int argc, char **argv) {
   std::signal(SIGINT, signal_handler);
 
-  std::filesystem::path output_path = "latency_baseline.bin";
+  struct option long_options[] = {{"output", required_argument, 0, 'o'},
+                                  {"port", required_argument, 0, 'p'},
+                                  {"cpu", required_argument, 0, 'c'},
+                                  {0, 0, 0, 0}};
 
-  if (argc <= 1) {
-    NLL_INFO("Please provide output path for data writing.\n");
+  int opt;
+  while ((opt = getopt_long(argc, argv, "o:p:c:", long_options, nullptr)) !=
+         -1) {
+    switch (opt) {
+    case 'o':
+      g_config.output_path = optarg;
+      break;
+    case 'p':
+      g_config.port = static_cast<uint16_t>(std::stoi(optarg));
+      break;
+    case 'c':
+      g_config.cpu_affinity = std::stoi(optarg);
+      break;
+    default:
+      print_usage();
+      return 1;
+    }
   }
-  if (argc > 1) {
-    output_path = argv[1];
+
+  if (g_config.output_path.has_parent_path()) {
+    std::filesystem::create_directories(g_config.output_path.parent_path());
   }
 
   ScopedSocket sock;
@@ -90,28 +120,28 @@ int main(int argc, char **argv) {
   }
 
   sockaddr_in addr{.sin_family = AF_INET,
-                   .sin_port = htons(Config::port),
+                   .sin_port = htons(g_config.port),
                    .sin_addr = {.s_addr = INADDR_ANY},
                    .sin_zero = {0}};
 
   if (bind(sock.get(), reinterpret_cast<struct sockaddr *>(&addr),
            sizeof(addr)) < 0) {
-    NLL_ERROR("Bind failed on port %d\n", Config::port);
+    NLL_ERROR("Bind failed on port %d\n", g_config.port);
     return 1;
   }
 
-  nll::thread::pin_to_core(3);
+  nll::thread::pin_to_core(g_config.cpu_affinity);
   nll::thread::set_realtime_priority();
 
-  NLL_INFO("Baseline Receiver (Synchronous) running on Core 3...\n");
-  NLL_INFO("Logging to: %s\n", output_path.string().c_str());
+  NLL_INFO("Baseline Receiver (Synchronous) running on Core %d...\n",
+           g_config.cpu_affinity);
+  NLL_INFO("Logging to: %s\n", g_config.output_path.c_str());
 
   {
-    nll::BinaryLogger<nll::LogEntry> logger(output_path);
+    nll::BinaryLogger<nll::LogEntry> logger(g_config.output_path);
     nll::message_header packet;
 
-    while (!g_stop_requested &&
-           g_stats.packets_processed < Config::max_packets) {
+    while (!g_stop_requested) {
       ssize_t len =
           recvfrom(sock.get(), &packet, sizeof(packet), 0, nullptr, nullptr);
       uint64_t rx_ts = nll::real_ns();

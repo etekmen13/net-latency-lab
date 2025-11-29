@@ -1,0 +1,35 @@
+global:
+  project_root: "/root/net-latency-lab" # Path to repo on the remote nodes
+  user: "root"
+  local_data_dir: "analysis/data"
+  nodes:
+    receiver_ip: "192.168.1.10" 
+    sender_ip: "192.168.1.11"
+
+benchmarks:
+  # Benchmark 1: Throughput Saturation
+  # Sweeps from 1k to 100k PPS to find where the baseline breaks
+  - name: "baseline_saturation"
+    enabled: true
+    receiver:
+      binary: "receiver_baseline"
+      cpu_affinity: 3
+    sender:
+      mode: "steady"
+      duration_sec: 10
+      rates_pps: [1000, 10000, 20000, 40000, 60000, 80000, 100000]
+      payload_size: 64
+
+  # Benchmark 2: Burst Resilience
+  # Tests how the threaded receiver handles micro-bursts compared to steady traffic
+  - name: "threaded_burst_test"
+    enabled: true
+    receiver:
+      binary: "receiver_threaded"
+      cpu_affinity: 2
+      batch_size: 32 # Tuning parameter for the SPSC queue
+    sender:
+      mode: "burst"
+      duration_sec: 15
+      rates_pps: [50000] # Average rate
+      burst_sizes: [10, 50, 100] # Packets per burst

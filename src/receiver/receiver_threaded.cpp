@@ -36,6 +36,7 @@ struct GlobalConfig {
   int cpu_affinity = 3;
   int worker_affinity = 2;
   int batch_size = 32;
+  int processing_time_ns = 0;
 };
 
 GlobalConfig g_config;
@@ -141,6 +142,9 @@ int main(int argc, char **argv) {
       break;
     case 's':
       g_config.single_thread_mode = true;
+      break;
+    case 'W':
+      g_config.processing_time_ns = std::stoi(optarg);
       break;
     default:
       print_usage();

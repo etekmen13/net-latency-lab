@@ -216,6 +216,9 @@ def main():
                             f"--port 49200 "
                             f"--cpu {rx_cpu}"
                         )
+                        work_ns = bench["receiver"].get("processing_time_ns", 0)
+                        if work_ns > 0:
+                            rx_cmd += f" --work {work_ns}"
 
                         if "threaded" in rx_bin:
                             rx_cmd += f" --batch {batch} --worker-cpu {rx_cpu - 1}"
@@ -226,14 +229,14 @@ def main():
                         tx_cmd = (
                             f"sudo {g['project_root']}/build/sender "
                             f"--ip {g['nodes']['receiver_ip']} "
-                            f"--port 49197 "
+                            f"--port 49200 "
                             f"--rate {rate} "
                             f"--mode {mode} "
                             f"--burst {burst} "
                             f"--duration {dur}"
                         )
                         tx_node.run(tx_cmd)
-                        rx_node.run(f"sudo pkill -2 {rx_bin} || true &> /dev/null/")
+                        rx_node.run(f"sudo pkill -2 {rx_bin} || true")
                         local_bin = os.path.join(camp_dir, f"{run_id}.bin")
                         try:
                             rx_node.fetch_file(remote_bin, local_bin)

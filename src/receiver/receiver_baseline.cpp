@@ -18,6 +18,7 @@ struct GlobalConfig {
   std::filesystem::path output_path = "latency_baseline.bin";
   uint32_t max_packets = 100'000;
   int cpu_affinity = 3;
+  int processing_time_ns = 0;
 };
 
 GlobalConfig g_config;
@@ -62,7 +63,12 @@ void process_packet(nll::BinaryLogger<nll::LogEntry> &logger,
     NLL_WARN("Invalid Magic: %x\n", mh.magic);
     return;
   }
-
+  if (g_config.processing_time_ns > 0) {
+    uint64_t start = nll::mono_ns();
+    while (nll::mono_ns() - start < g_config.processing_time_ns) {
+      nll::thread::cpu_relax();
+    }
+  }
   int64_t latency = rx_time - mh.send_unix_ns;
 
   logger.log({.seq_idx = mh.seq_idx,
@@ -88,10 +94,11 @@ int main(int argc, char **argv) {
   struct option long_options[] = {{"output", required_argument, 0, 'o'},
                                   {"port", required_argument, 0, 'p'},
                                   {"cpu", required_argument, 0, 'c'},
+                                  {"work", required_argument, 0, 'W'},
                                   {0, 0, 0, 0}};
 
   int opt;
-  while ((opt = getopt_long(argc, argv, "o:p:c:", long_options, nullptr)) !=
+  while ((opt = getopt_long(argc, argv, "o:p:c:W", long_options, nullptr)) !=
          -1) {
     switch (opt) {
     case 'o':
@@ -102,6 +109,9 @@ int main(int argc, char **argv) {
       break;
     case 'c':
       g_config.cpu_affinity = std::stoi(optarg);
+      break;
+    case 'W':
+      g_config.processing_time_ns = std::stoi(optarg);
       break;
     default:
       print_usage();

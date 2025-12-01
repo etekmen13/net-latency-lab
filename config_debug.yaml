@@ -18,7 +18,7 @@ benchmarks:
       processing_time_ns: 10000
     sender:
       mode: "steady"
-      duration_sec: 10
+      duration_sec: 1
       rates_pps: [1000, 2500, 5000, 7500, 10000, 25000, 50000, 75000, 100000]
       payload_size: 64
   - name: "threaded"
@@ -30,21 +30,6 @@ benchmarks:
       processing_time_ns: 10000
     sender:
       mode: "steady"
-      duration_sec: 10
+      duration_sec: 1
       rates_pps: [1000, 2500, 5000, 7500, 10000, 25000, 50000, 75000, 100000]
       payload_size: 64
-
-
-  # Benchmark 2: Burst Resilience
-  # Tests how the threaded receiver handles micro-bursts compared to steady traffic
-  - name: "threaded_burst_test"
-    enabled: true
-    receiver:
-      binary: "receiver_threaded"
-      cpu_affinity: 2
-      batch_size: 32 # Tuning parameter for the SPSC queue
-    sender:
-      mode: "burst"
-      duration_sec: 15
-      rates_pps: [50000] # Average rate
-      burst_sizes: [10, 50, 100] # Packets per burst

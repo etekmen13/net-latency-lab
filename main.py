@@ -75,7 +75,7 @@ class RemoteNode(NodeController):
         self.client = paramiko.SSHClient()
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
-            self.client.connect(ip, username=user, key_filename=key_file, timeout=5)
+            self.client.connect(ip, username=user, timeout=5, look_for_keys=False, allow_agent=True)
         except Exception as e:
             print(f"Failed to connect to {user}@{ip}: {e}")
             sys.exit(1)
@@ -84,7 +84,9 @@ class RemoteNode(NodeController):
         if background:
             transport = self.client.get_transport()
             channel = transport.open_session()
-            full_cmd = f"nohup {cmd} > /dev/null 2>&1 &"
+            log_file = f"/tmp/remote_proc_{int(time.time())}.log"
+            full_cmd = f"nohup {cmd} > {log_file} 2>&1 &"
+            print(f"  [Remote Debug] Logging background cmd to: {log_file}")
             channel.exec_command(full_cmd)
         else:
             stdin, stdout, stderr = self.client.exec_command(cmd)
@@ -148,8 +150,8 @@ def main():
     target_uid = script_stat.st_uid
     target_gid = script_stat.st_gid
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    if g.get("project_root") == "." or g.get("project_root") is None:
-        g["project_root"] = script_dir
+    if g.get("local_project_root") == "." or g.get("local_project_root") is None:
+        g["local_project_root"] = script_dir
 
     print(f"Initializing Nodes...")
     rx_node = get_node_controller(g["nodes"]["receiver_ip"], g["user"])
@@ -157,7 +159,7 @@ def main():
 
     if not args.skip_build:
         print("Building binaries...")
-        build_cmd = f"make -C {g['project_root']}/build -j4"
+        build_cmd = f"make -C {g['remote_project_root']}/build -j4"
         if isinstance(rx_node, LocalNode) and isinstance(tx_node, LocalNode):
             rx_node.run(build_cmd)
         else:
@@ -166,7 +168,7 @@ def main():
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     session_dir = os.path.join(
-        g["project_root"], g["local_data_dir"], f"session_{timestamp}"
+        g["local_project_root"], g["local_data_dir"], f"session_{timestamp}"
     )
     print(f"Session dir: {session_dir}")
     os.makedirs(session_dir, exist_ok=True)
@@ -176,13 +178,13 @@ def main():
             if not bench.get("enabled", False):
                 continue
 
-            print(f"\nCampaign: {bench['name']}")
+            print(f"\nBenchmark: {bench['name']}")
             camp_dir = os.path.join(session_dir, bench["name"])
             os.makedirs(camp_dir, exist_ok=True)
 
             if not isinstance(rx_node, LocalNode):
                 print("    Syncing clocks...")
-                sync_cmd = f"sudo {g['project_root']}/scripts/sync_clocks.sh"
+                sync_cmd = f"sudo {g['remote_project_root']}/scripts/sync_clocks.sh"
                 rx_node.run(sync_cmd)
                 tx_node.run(sync_cmd)
 
@@ -197,7 +199,7 @@ def main():
                         if mode == "steady" and burst > 1:
                             continue
 
-                        print(f"[Run] {rate}pps | {mode} | Burst {burst}")
+                        print(f"[Run] {rate}pps | {f'| burst {burst}'if mode == 'burst' else '| steady' } | batch {batch}")
 
                         rx_node.run("sudo pkill -9 receiver || true")
                         tx_node.run("sudo pkill -9 sender || true")
@@ -211,7 +213,7 @@ def main():
                         rx_cpu = bench["receiver"].get("cpu_affinity", 3)
 
                         rx_cmd = (
-                            f"sudo {g['project_root']}/build/{rx_bin} "
+                            f"sudo {g['remote_project_root']}/build/{rx_bin} "
                             f"--output {remote_bin} "
                             f"--port 49200 "
                             f"--cpu {rx_cpu}"
@@ -227,7 +229,7 @@ def main():
 
                         dur = bench["sender"]["duration_sec"]
                         tx_cmd = (
-                            f"sudo {g['project_root']}/build/sender "
+                            f"sudo {g['remote_project_root']}/build/sender "
                             f"--ip {g['nodes']['receiver_ip']} "
                             f"--port 49200 "
                             f"--rate {rate} "
@@ -239,6 +241,9 @@ def main():
                         rx_node.run(f"sudo pkill -2 {rx_bin} || true")
                         local_bin = os.path.join(camp_dir, f"{run_id}.bin")
                         try:
+                            user = g['user']
+                            rx_node.run(f"sudo chown {user}:{user} {remote_bin}")
+                            print(f"  [Fetch] Downloading {remote_bin} -> {local_bin}")
                             rx_node.fetch_file(remote_bin, local_bin)
 
                             with open(
@@ -263,7 +268,7 @@ def main():
         recursive_chown(session_dir, target_uid, target_gid)
         rx_node.close()
         tx_node.close()
-    run_analysis_pipeline(g["project_root"], session_dir)
+    run_analysis_pipeline(g["local_project_root"], session_dir)
 
 
 if __name__ == "__main__":

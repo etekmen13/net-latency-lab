@@ -11,14 +11,14 @@
 #include <getopt.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
-
+constexpr std::size_t cache_line_size = 64;
 struct GlobalConfig {
   uint16_t port = 49200;
   uint16_t magic_number = 0x6584;
   std::filesystem::path output_path = "latency_baseline.bin";
   uint32_t max_packets = 100'000;
   int cpu_affinity = 3;
-  int processing_time_ns = 0;
+  uint64_t processing_time_ns = 0;
 };
 
 GlobalConfig g_config;
@@ -34,6 +34,13 @@ public:
     if (fd_ >= 0) {
       struct timeval tv{.tv_sec = 0, .tv_usec = 100 * 1000};
       setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+      int opt = 1;
+      if (setsockopt(fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+          perror("setsockopt(SO_REUSEADDR) failed");
+      }
+      if (setsockopt(fd_, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) < 0) {
+          perror("setsockopt(SO_REUSEPORT) failed");
+      }
     }
   }
   ~ScopedSocket() {
@@ -48,7 +55,7 @@ public:
   [[nodiscard]] bool is_valid() const { return fd_ >= 0; }
 };
 
-struct alignas(std::hardware_destructive_interference_size) Stats {
+struct alignas(cache_line_size) Stats {
   std::atomic<uint64_t> packets_processed{0};
   std::atomic<uint64_t> accumulated_latency_ns{0};
   std::atomic<uint64_t> dropped_packets{0};

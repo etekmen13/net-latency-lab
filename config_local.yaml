@@ -1,5 +1,6 @@
 global:
-  project_root: "."
+  remote_project_root: "."
+  local_project_root: "."
   user: "root"
   local_data_dir: "analysis/data"
   nodes:
@@ -18,7 +19,7 @@ benchmarks:
       processing_time_ns: 10000
     sender:
       mode: "steady"
-      duration_sec: 10
+      duration_sec: 1
       rates_pps: [1000, 5000,10000,50000,100000,1000000,5000000,10000000,100000000]
       payload_size: 64
   - name: "baseline"
@@ -29,7 +30,7 @@ benchmarks:
       processing_time_ns: 10000
     sender:
       mode: "steady"
-      duration_sec: 10
+      duration_sec: 1
       rates_pps: [1000, 5000,10000,50000,100000,1000000,5000000,10000000,100000000]
       payload_size: 64
 

@@ -1,4 +1,4 @@
-#ifndef _GNU_SOURCE
+ #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
 
@@ -23,8 +23,9 @@
 #include <sys/socket.h>
 #include <thread>
 
-constexpr size_t MAX_BATCH_CAPACITY = 1024;
+constexpr std::size_t MAX_BATCH_CAPACITY = 1024;
 
+constexpr std::size_t cache_line_size = 64;
 struct GlobalConfig {
   bool single_thread_mode = false;
   uint16_t port = 49200;
@@ -36,7 +37,7 @@ struct GlobalConfig {
   int cpu_affinity = 3;
   int worker_affinity = 2;
   int batch_size = 32;
-  int processing_time_ns = 0;
+  uint64_t processing_time_ns = 0;
 };
 
 GlobalConfig g_config;
@@ -52,6 +53,13 @@ public:
     if (fd_ >= 0) {
       struct timeval tv{0, 100 * 1000};
       setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+      int opt = 1;
+      if (setsockopt(fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+          perror("setsockopt(SO_REUSEADDR) failed");
+      }
+      if (setsockopt(fd_, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) < 0) {
+          perror("setsockopt(SO_REUSEPORT) failed");
+      }
     }
   }
   ~ScopedSocket() {
@@ -62,7 +70,7 @@ public:
   [[nodiscard]] bool is_valid() const { return fd_ >= 0; }
 };
 
-struct alignas(std::hardware_destructive_interference_size) Stats {
+struct alignas(cache_line_size) Stats {
   std::atomic<uint64_t> packets_processed{0};
   std::atomic<uint64_t> accumulated_latency_ns{0};
   std::atomic<uint64_t> dropped_packets{0};

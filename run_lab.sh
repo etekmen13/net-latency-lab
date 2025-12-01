@@ -9,5 +9,5 @@ if [ ! -f "$VENV_PYTHON" ]; then
     exit 1
 fi
 
-sudo "$VENV_PYTHON" "$MAIN_SCRIPT" "$@"
+sudo SSH_AUTH_SOCK="$SSH_AUTH_SOCK" "$VENV_PYTHON" "$MAIN_SCRIPT" "$@"
 

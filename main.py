@@ -75,7 +75,9 @@ class RemoteNode(NodeController):
         self.client = paramiko.SSHClient()
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         try:
-            self.client.connect(ip, username=user, timeout=5, look_for_keys=False, allow_agent=True)
+            self.client.connect(
+                ip, username=user, timeout=5, look_for_keys=False, allow_agent=True
+            )
         except Exception as e:
             print(f"Failed to connect to {user}@{ip}: {e}")
             sys.exit(1)
@@ -199,7 +201,9 @@ def main():
                         if mode == "steady" and burst > 1:
                             continue
 
-                        print(f"[Run] {rate}pps | {f'| burst {burst}'if mode == 'burst' else '| steady' } | batch {batch}")
+                        print(
+                            f"[Run] {rate}pps {f'| burst {burst}'if mode == 'burst' else '| steady' } | batch {batch}"
+                        )
 
                         rx_node.run("sudo pkill -9 receiver || true")
                         tx_node.run("sudo pkill -9 sender || true")
@@ -238,12 +242,11 @@ def main():
                             f"--duration {dur}"
                         )
                         tx_node.run(tx_cmd)
-                        rx_node.run(f"sudo pkill -2 {rx_bin} || true")
+                        rx_node.run(f"sudo pkill -2 {rx_bin} || true > /dev/null 2>&1")
                         local_bin = os.path.join(camp_dir, f"{run_id}.bin")
                         try:
-                            user = g['user']
+                            user = g["user"]
                             rx_node.run(f"sudo chown {user}:{user} {remote_bin}")
-                            print(f"  [Fetch] Downloading {remote_bin} -> {local_bin}")
                             rx_node.fetch_file(remote_bin, local_bin)
 
                             with open(

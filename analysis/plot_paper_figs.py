@@ -72,23 +72,82 @@ def plot_burst_impact(df, output_dir):
     print("Generated Fig 2: Burst Impact")
 
 
-def plot_jitter_comparison(df, output_dir):
-    """Fig 3: Peak Load Jitter Stability"""
-    idx = df.groupby(["receiver", "batch_size"])["rate_pps"].idxmax()
-    subset = df.loc[idx].copy()
+def plot_jitter_and_loss(df, output_dir):
+    """
+    Fig 3 (Revised): Jitter Stability vs. Load with Loss Overlay
+    Uses a Dual Y-Axis to show that low jitter at high load
+    is a symptom of packet loss (Survivor Bias).
+    """
+    subset = df[(df["mode"] == "steady") & (df["burst_size"] <= 1)].copy()
+    if subset.empty:
+        return
+
     subset["Variant"] = subset.apply(get_variant_label, axis=1)
 
-    plt.figure(figsize=(8, 5))
-    ax = sns.barplot(
-        data=subset, x="Variant", y="jitter_p99", hue="rate_pps", palette="magma"
+    # Setup the figure and primary axis (Jitter)
+    fig, ax1 = plt.subplots(figsize=(10, 6))
+
+    # Plot 1: Jitter on Left Axis (Solid Lines)
+    sns.lineplot(
+        data=subset,
+        x="rate_pps",
+        y="jitter_p99",
+        hue="Variant",
+        style="Variant",
+        markers=True,
+        dashes=False,  # Force solid lines for Jitter
+        linewidth=2.5,
+        markersize=9,
+        ax=ax1,
+        legend=False,  # We will build a custom legend
     )
-    ax.set_title("Peak Load Jitter Stability", fontweight="bold")
-    ax.set_ylabel("99th %ile Jitter (µs)")
-    ax.set_xlabel("Implementation")
+
+    ax1.set_title("Jitter Stability vs. Load (with Packet Loss)", fontweight="bold")
+    ax1.set_xlabel("Offered Load (Packets/Sec)")
+    ax1.set_ylabel("99th %ile Jitter (µs)")
+    ax1.grid(True, which="minor", linestyle=":", linewidth=0.5)
+
+    # Setup the secondary axis (Packet Loss)
+    ax2 = ax1.twinx()
+
+    # Plot 2: Packet Loss on Right Axis (Dashed Lines)
+    # We use the same hue order so colors match the Jitter lines
+    variants = sorted(subset["Variant"].unique())
+    palette = sns.color_palette(n_colors=len(variants))
+
+    for i, variant in enumerate(variants):
+        var_data = subset[subset["Variant"] == variant]
+        ax2.plot(
+            var_data["rate_pps"],
+            var_data["loss_pct"],
+            color=palette[i],
+            linestyle="--",  # Dashed for Loss
+            alpha=0.6,  # Slightly transparent
+            linewidth=2,
+        )
+
+    ax2.set_ylabel("Packet Loss (%) - (Dashed Lines)")
+    ax2.set_ylim(0, 100)  # Fix loss scale 0-100%
+
+    # Custom Legend
+    from matplotlib.lines import Line2D
+
+    legend_elements = []
+    for i, variant in enumerate(variants):
+        # Add the color entry for the variant
+        legend_elements.append(Line2D([0], [0], color=palette[i], lw=2, label=variant))
+
+    # Add key for Solid vs Dashed
+    legend_elements.append(Line2D([0], [0], color="gray", lw=2, label="Solid = Jitter"))
+    legend_elements.append(
+        Line2D([0], [0], color="gray", lw=2, linestyle="--", label="Dashed = Loss")
+    )
+
+    ax1.legend(handles=legend_elements, loc="upper left")
 
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "fig_3_jitter_bar.png"), dpi=300)
-    print("Generated Fig 3: Jitter Bar")
+    plt.savefig(os.path.join(output_dir, "fig_3_jitter_with_loss.png"), dpi=300)
+    print("Generated Fig 3: Jitter Curve with Loss Overlay")
 
 
 def plot_packet_loss(df, output_dir):
@@ -113,7 +172,6 @@ def plot_packet_loss(df, output_dir):
     ax.set_title("Reliability: Packet Loss vs. Load", fontweight="bold")
     ax.set_xlabel("Offered Load (Packets/Sec)")
     ax.set_ylabel("Packet Loss (%)")
-    ax.set_ylim(-0.5, 20)
 
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "fig_4_packet_loss.png"), dpi=300)
@@ -224,7 +282,7 @@ def main():
 
     plot_steady_state_curve(df, output_dir)
     plot_burst_impact(df, output_dir)
-    plot_jitter_comparison(df, output_dir)
+    plot_jitter_and_loss(df, output_dir)
     plot_packet_loss(df, output_dir)
     plot_cdf_comparison(df, output_dir)
 

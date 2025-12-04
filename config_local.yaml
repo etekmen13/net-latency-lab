@@ -6,10 +6,9 @@ global:
   nodes:
     receiver_ip: "127.0.0.1"
     sender_ip: "127.0.0.1"
+    receiver_iface: "lo"
 
 benchmarks:
-  # Benchmark 1: Throughput Saturation
-  # Sweeps from 1k to 100k PPS to find where the baseline breaks
   - name: "threaded"
     enabled: true
     receiver:
@@ -19,7 +18,7 @@ benchmarks:
       processing_time_ns: 10000
     sender:
       mode: "steady"
-      duration_sec: 10
+      duration_sec: 5
       rates_pps: [1000,5000,10000,25000,50000,75000,100000, 500000, 1000000]
       payload_size: 64
   - name: "baseline"
@@ -30,7 +29,7 @@ benchmarks:
       processing_time_ns: 10000
     sender:
       mode: "steady"
-      duration_sec: 10
+      duration_sec: 5
       rates_pps: [1000,5000,10000,25000,50000,75000,100000, 500000, 1000000]
       payload_size: 64
 

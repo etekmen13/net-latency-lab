@@ -6,7 +6,7 @@ global:
   nodes:
     receiver_ip: "192.168.1.10" 
     sender_ip: "192.168.1.11"
-
+    receiver_iface: "eth0"
 benchmarks:
   # Benchmark 1: Throughput Saturation
   # Sweeps from 1k to 100k PPS to find where the baseline breaks

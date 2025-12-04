@@ -38,6 +38,35 @@ class NodeController:
     def fetch_file(self, remote_path, local_path):
         raise NotImplementedError
 
+    def get_drop_count(self, interface=None):
+        total_drops = 0
+
+        try:
+            snmp_out = self.run("cat /proc/net/snmp", background=False)
+            lines = snmp_out.splitlines()
+            headers = [x for x in lines if x.startswith("Udp:")][0].split()
+            values = [x for x in lines if x.startswith("Udp:")][1].split()
+
+            if "RcvbufErrors" in headers:
+                idx = headers.index("RcvbufErrors")
+                total_drops += int(values[idx])
+        except Exception:
+            pass
+
+        if interface and interface != "lo":
+            try:
+                cmd = f"ethtool -S {interface} | grep -E 'rx_missed_errors|rx_dropped'"
+                eth_out = self.run(cmd, background=False)
+
+                for line in eth_out.splitlines():
+                    parts = line.strip().split(":")
+                    if len(parts) == 2:
+                        total_drops += int(parts[1])
+            except Exception:
+                pass
+
+        return total_drops
+
     def close(self):
         pass
 
@@ -202,7 +231,7 @@ def main():
                             continue
 
                         print(
-                            f"[Run] {rate}pps {f'| burst {burst}'if mode == 'burst' else '| steady' } | batch {batch}"
+                            f"[Run] {rate}pps {f'| burst {burst}'if mode == 'burst' else '| steady' } | batch {batch} | {bench['sender']['duration_sec']} sec"
                         )
 
                         rx_node.run("sudo pkill -9 receiver || true")
@@ -241,7 +270,15 @@ def main():
                             f"--burst {burst} "
                             f"--duration {dur}"
                         )
+                        interface = g["nodes"].get("receiver_iface", "lo")
+                        start_drops = rx_node.get_drop_count(interface)
                         tx_node.run(tx_cmd)
+                        end_drops = rx_node.get_drop_count(interface)
+
+                        packet_drops = end_drops - start_drops
+                        print(f"[Packet Drops] {packet_drops}")
+
+                        tx_node.run("sudo pkill -9 sender || true")
                         rx_node.run(f"sudo pkill -2 {rx_bin} || true > /dev/null 2>&1")
                         local_bin = os.path.join(camp_dir, f"{run_id}.bin")
                         try:

@@ -18,7 +18,7 @@ benchmarks:
       processing_time_ns: 10000
     sender:
       mode: "steady"
-      duration_sec: 10
+      duration_sec: 30
       rates_pps: [1000, 2500, 5000, 7500, 10000, 25000, 50000, 75000, 100000]
       payload_size: 64
   - name: "threaded"
@@ -30,7 +30,7 @@ benchmarks:
       processing_time_ns: 10000
     sender:
       mode: "steady"
-      duration_sec: 10
+      duration_sec: 30
       rates_pps: [1000, 2500, 5000, 7500, 10000, 25000, 50000, 75000, 100000]
       payload_size: 64
 

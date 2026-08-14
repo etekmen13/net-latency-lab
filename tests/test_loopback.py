@@ -38,16 +38,23 @@ def wait_for_udp_bind(process: subprocess.Popen, port: int, timeout: float = 3.0
     raise TimeoutError(f"receiver did not bind UDP port {port}")
 
 
-def run_receiver(binary, tmp_path, count: int, work: int = 0, batch: int = 8):
+def run_receiver(binary, tmp_path, count: int, work: int = 0, batch: int = 8,
+                 shutdown_with_signal: bool = False):
     port = free_port(); trace = tmp_path / f"{binary.name}_{work}.bin"; stats = tmp_path / f"{binary.name}_{work}.json"
     command = [binary, "--port", str(port), "--output", trace, "--stats", stats,
-               "--max-packets", str(count), "--work", str(work)]
+               "--max-packets", "0" if shutdown_with_signal else str(count),
+               "--work", str(work)]
     if binary.name != "receiver_baseline": command += ["--batch", str(batch)]
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         wait_for_udp_bind(process, port)
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:
             for sequence in range(count): sender.sendto(packet(sequence), ("127.0.0.1", port))
+        if shutdown_with_signal:
+            # UDP may drop part of a deliberate burst, especially on a Pi.
+            # This test needs a substantial queue, not exact datagram delivery.
+            time.sleep(0.5)
+            process.send_signal(signal.SIGINT)
         stdout, stderr = process.communicate(timeout=8)
     finally:
         if process.poll() is None:
@@ -82,11 +89,11 @@ def test_work_increases_recorded_processing_time(binaries, tmp_path, name):
 
 def test_threaded_receive_timestamp_survives_queue_backlog(binaries, tmp_path):
     frame, stats = run_receiver(binaries["receiver_threaded"], tmp_path, 500,
-                                work=200_000, batch=64)
+                                work=200_000, batch=64, shutdown_with_signal=True)
     # A worker-side timestamp would keep this interval near zero. The ingress
     # timestamp must expose the queue built by the deliberately slow worker.
-    assert stats["interrupted"] is False
-    assert stats["processed_packets"] == len(frame) == 500
+    assert stats["interrupted"] is True
+    assert stats["processed_packets"] == len(frame) >= 256
     assert stats["spsc_overflow"] == 0
     assert frame.application_queue_delay_ns.quantile(0.90) > 1_000_000
 

@@ -35,6 +35,18 @@ LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 RECEIVER_BINARIES = {"receiver_baseline", "receiver_batched", "receiver_threaded"}
 
 
+def progress(message: str) -> None:
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    print(f"[{timestamp}] {message}", flush=True)
+
+
+def format_duration(seconds: float) -> str:
+    total_seconds = max(0, round(seconds))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
 @dataclass
 class ProcessHandle:
     pid: int
@@ -737,6 +749,9 @@ def run_campaign(config: dict[str, Any], config_path: Path,
     config_snapshot = session_dir / "config_snapshot.yaml"
     config_snapshot.write_bytes(config_path.read_bytes())
     qualification, comparative = make_run_tuples(config)
+    progress(f"Session {session_id}: preparing {len(qualification)} qualification "
+             f"runs and up to {len(comparative)} comparison runs")
+    progress("Collecting frozen environment metadata from receiver, sender, and controller")
     environment = {
         "receiver": collect_machine_metadata(receiver_node, global_config["remote_project_root"],
                                              nodes["receiver"]["interface"]) if global_config["metadata_collection"] else {},
@@ -744,6 +759,7 @@ def run_campaign(config: dict[str, Any], config_path: Path,
                                            nodes["sender"].get("interface")) if global_config["metadata_collection"] else {},
         "orchestrator": collect_machine_metadata(LocalNode(), str(Path(__file__).parent), None) if global_config["metadata_collection"] else {},
     }
+    progress("Environment metadata collection complete")
     manifest: dict[str, Any] = {
         "schema_version": 2, "session_id": session_id,
         "created_utc": datetime.now(timezone.utc).isoformat(),
@@ -760,11 +776,50 @@ def run_campaign(config: dict[str, Any], config_path: Path,
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     try:
         if not skip_build:
+            progress("Building configured binaries on the benchmark nodes")
             build_nodes([receiver_node, sender_node], global_config["remote_project_root"], runtime)
+            progress("Remote builds complete")
+        completed_runs = 0
+        planned_runs = len(qualification) + len(comparative)
+        runs_started = time.monotonic()
+
+        def execute_with_progress(item: RunTuple, phase: str) -> dict[str, Any]:
+            nonlocal completed_runs
+            benchmark = config["benchmarks"][item.benchmark_index]
+            silence_seconds = (float(benchmark["sender"]["duration_seconds"]) +
+                               float(runtime.get("post_sender_drain_seconds", 1.0)))
+            position = completed_runs + 1
+            label = (f"{phase} {item.benchmark_name} rep={item.repetition} "
+                     f"rate={item.rate}pps burst={item.burst} batch={item.batch}")
+            progress(f"START {position}/{planned_runs}: {label}; timed interval will be "
+                     f"quiet for {format_duration(silence_seconds)}")
+            run_started = time.monotonic()
+            try:
+                result = execute_run(item, config, session_id, session_dir,
+                                     receiver_node, sender_node, environment)
+            except Exception as exc:
+                progress(f"FAILED {position}/{planned_runs}: {label} after "
+                         f"{format_duration(time.monotonic() - run_started)}: {exc}")
+                raise
+            completed_runs += 1
+            metadata = result["metadata_object"]
+            validity = metadata["validity"]
+            accounting = metadata["packet_accounting"]
+            status = "valid" if validity["valid"] else "INVALID: " + "; ".join(validity["reasons"])
+            average_seconds = (time.monotonic() - runs_started) / completed_runs
+            eta_seconds = average_seconds * max(0, planned_runs - completed_runs)
+            progress(f"DONE {completed_runs}/{planned_runs}: {label}; {status}; "
+                     f"sent={metadata['sender_stats']['successful_sends']} "
+                     f"received={metadata['receiver_stats']['unique_valid_packets']} "
+                     f"processed={metadata['receiver_stats']['unique_processed_packets']} "
+                     f"app_loss={accounting['application_loss_pct']:.4f}%; "
+                     f"run={format_duration(time.monotonic() - run_started)} "
+                     f"ETA={format_duration(eta_seconds)}")
+            return result
+
         qualification_metadata: list[dict[str, Any]] = []
         for item in qualification:
-            result = execute_run(item, config, session_id, session_dir,
-                                 receiver_node, sender_node, environment)
+            result = execute_with_progress(item, "qualification")
             qualification_metadata.append(result.pop("metadata_object"))
             manifest["runs"].append(result)
             manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -773,15 +828,19 @@ def run_campaign(config: dict[str, Any], config_path: Path,
             comparative = [item for item in comparative
                            if not config["benchmarks"][item.benchmark_index].get("uses_qualified_rates", False)
                            or item.rate in eligible]
+        planned_runs = completed_runs + len(comparative)
+        if eligible is not None:
+            progress(f"Qualification complete: eligible rates={eligible}; "
+                     f"{len(comparative)} comparison runs frozen")
         manifest["eligible_rates_pps"] = eligible
         manifest["frozen_comparative_order"] = [asdict(item) for item in comparative]
         manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         for item in comparative:
-            result = execute_run(item, config, session_id, session_dir,
-                                 receiver_node, sender_node, environment)
+            result = execute_with_progress(item, "comparison")
             result.pop("metadata_object")
             manifest["runs"].append(result)
             manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        progress(f"Session {session_id}: all {completed_runs} runs complete; generating summaries")
     finally:
         receiver_node.close()
         if sender_node is not receiver_node:

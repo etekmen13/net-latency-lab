@@ -207,7 +207,8 @@ def one_benchmark_config(tmp_path):
     return config
 
 
-def test_fake_controller_pid_lifecycle_repetitions_and_metadata(monkeypatch, tmp_path):
+def test_fake_controller_pid_lifecycle_repetitions_metadata_and_progress(
+        monkeypatch, tmp_path, capsys):
     fake = FakeNode(metadata_root=tmp_path)
     monkeypatch.setattr("main.get_node", lambda host, user: fake)
     monkeypatch.setattr("main.time.sleep", lambda seconds: None)
@@ -215,6 +216,7 @@ def test_fake_controller_pid_lifecycle_repetitions_and_metadata(monkeypatch, tmp
     config = one_benchmark_config(tmp_path)
     config_path.write_text(yaml.safe_dump(config))
     session = run_campaign(config, config_path, skip_build=True)
+    output = capsys.readouterr().out
     manifest = json.loads((session / "session_manifest.json").read_text())
     assert len(manifest["runs"]) == 2
     assert len({run["run_id"] for run in manifest["runs"]}) == 2
@@ -227,6 +229,12 @@ def test_fake_controller_pid_lifecycle_repetitions_and_metadata(monkeypatch, tmp
     assert metadata["counters"]["nic_rx_dropped"]["delta"] is None
     assert metadata["counters"]["nic_rx_dropped"]["error"] == "not available"
     assert (session / "config_snapshot.yaml").exists()
+    assert "preparing 0 qualification runs and up to 2 comparison runs" in output
+    assert "START 1/2: comparison baseline_debug" in output
+    assert "timed interval will be quiet for" in output
+    assert "DONE 2/2: comparison baseline_debug" in output
+    assert "ETA=00:00:00" in output
+    assert "all 2 runs complete; generating summaries" in output
     assert len(fake.cleanup_requests) == 4
     assert all(fake.metadata_existed_at_cleanup)
     ordinary_suffixes = {

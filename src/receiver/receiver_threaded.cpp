@@ -78,7 +78,6 @@ int main(int argc, char **argv) {
   nll::receiver::ScopedSocket socket(config.socket_buffer_bytes);
   if (!socket.valid() || !nll::receiver::bind_socket(socket.get(), config.port)) return 1;
   auto rx_affinity = nll::receiver::apply_affinity(config.cpu);
-  auto rx_scheduler = nll::thread::set_scheduler(config.scheduler, config.priority);
   nll::BinaryLogger logger(config.output_path);
   if (!logger.is_open()) return 1;
 
@@ -86,6 +85,9 @@ int main(int argc, char **argv) {
   std::atomic<bool> producer_done{false};
   nll::receiver::ProcessingStats processing;
   WorkerOutcomes worker_outcomes;
+  // POSIX threads inherit their creator's affinity mask and scheduler. Create
+  // the worker while the receiver is still SCHED_OTHER so it can migrate from
+  // the inherited receiver CPU before either thread is promoted to real time.
   std::thread worker([&] {
     worker_outcomes.affinity = nll::receiver::apply_affinity(config.worker_cpu);
     worker_outcomes.scheduler = nll::thread::set_scheduler(config.scheduler, config.priority);
@@ -107,6 +109,7 @@ int main(int argc, char **argv) {
       queue.pop();
     }
   });
+  auto rx_scheduler = nll::thread::set_scheduler(config.scheduler, config.priority);
 
   nll::receiver::Stats stats;
   stats.requested_socket_buffer_bytes = socket.requested_buffer_bytes();

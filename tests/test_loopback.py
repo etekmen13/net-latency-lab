@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import signal
 import socket
 import struct
@@ -110,6 +111,71 @@ def test_threaded_sigint_drains_and_flushes(binaries, tmp_path):
     assert process.returncode == 0 and stats["interrupted"] is True
     assert stats["processed_packets"] == len(frame)
     assert stats["processed_packets"] + stats["spsc_overflow"] == stats["valid_packets"]
+
+
+def test_threaded_fifo_affinity_lifecycle(binaries, tmp_path):
+    allowed_cpus = sorted(os.sched_getaffinity(0))
+    if len(allowed_cpus) < 2:
+        pytest.skip("threaded FIFO lifecycle needs two allowed CPUs")
+
+    configured_binary = os.environ.get("NLL_THREADED_RECEIVER_BINARY")
+    binary = (Path(configured_binary).resolve() if configured_binary
+              else binaries["receiver_threaded"])
+    if not binary.is_file():
+        pytest.fail(f"threaded receiver binary does not exist: {binary}")
+
+    receiver_cpu, worker_cpu = allowed_cpus[:2]
+    port = free_port()
+    trace = tmp_path / "fifo_lifecycle.bin"
+    stats_path = tmp_path / "fifo_lifecycle.json"
+    process = subprocess.Popen([
+        binary, "--port", str(port), "--output", trace, "--stats", stats_path,
+        "--cpu", str(receiver_cpu), "--worker-cpu", str(worker_cpu),
+        "--scheduler", "fifo", "--priority", "90", "--batch", "8",
+    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    started_shutdown = None
+    try:
+        wait_for_udp_bind(process, port)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:
+            for sequence in range(64):
+                sender.sendto(packet(sequence), ("127.0.0.1", port))
+                time.sleep(0.0001)
+        time.sleep(0.05)
+        started_shutdown = time.monotonic()
+        process.send_signal(signal.SIGINT)
+        stdout, stderr = process.communicate(timeout=5)
+    except subprocess.TimeoutExpired:
+        pytest.fail("FIFO receiver did not exit within 5 seconds of SIGINT")
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.communicate()
+
+    assert process.returncode == 0, stdout + stderr
+    assert started_shutdown is not None and time.monotonic() - started_shutdown < 5
+    assert stats_path.is_file(), stdout + stderr
+    stats = json.loads(stats_path.read_text())
+
+    scheduler_outcomes = [stats["receiver_scheduler"], stats["worker_scheduler"]]
+    if all(not outcome["success"] and outcome["error"] in {
+            "Operation not permitted", "Permission denied"}
+           for outcome in scheduler_outcomes):
+        pytest.skip("CAP_SYS_NICE is unavailable to the threaded receiver")
+
+    assert stats["interrupted"] is True
+    assert stats["datagrams_received"] == stats["valid_packets"]
+    assert stats["processed_packets"] == stats["valid_packets"] >= 1
+    assert len(load_binary_file(trace)) == stats["processed_packets"]
+    for name, cpu in (("receiver_affinity", receiver_cpu),
+                      ("worker_affinity", worker_cpu)):
+        outcome = stats[name]
+        assert outcome["success"] is True
+        assert outcome["requested_cpu"] == outcome["observed_cpu"] == cpu
+        assert outcome["observed_cpu_set"] == str(cpu)
+    for outcome in scheduler_outcomes:
+        assert outcome["success"] is True
+        assert outcome["requested_policy"] == outcome["observed_policy"] == "fifo"
+        assert outcome["requested_priority"] == outcome["observed_priority"] == 90
 
 
 def test_count_only_mode_writes_header_and_keeps_online_accounting(binaries, tmp_path):

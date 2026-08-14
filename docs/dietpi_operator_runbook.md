@@ -510,6 +510,20 @@ getcap build/pi4-release/receiver_*
 
 The governors must be `performance`, throttling must be `0x0`, and receiver binaries must have `cap_sys_nice=ep`.
 
+On the receiver, exercise the privileged threaded startup and shutdown path
+repeatedly against the capability-bearing release binary:
+
+```bash
+for repetition in $(seq 1 20); do
+  NLL_THREADED_RECEIVER_BINARY=build/pi4-release/receiver_threaded \
+    .venv/bin/python -m pytest -q tests/test_loopback.py \
+    -k threaded_fifo_affinity_lifecycle
+done
+```
+
+Every repetition must pass; a skip means the release binary did not receive
+`CAP_SYS_NICE` and must be corrected before preflight.
+
 Inspect the IRQ snapshot and confirm the relevant IRQs were found:
 
 ```bash

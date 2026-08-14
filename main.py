@@ -42,6 +42,7 @@ class ProcessHandle:
     log_path: str
     process: subprocess.Popen[str] | None = None
     log_stream: Any = None
+    monitor_pid: int | None = None
 
 
 @dataclass(frozen=True)
@@ -156,15 +157,24 @@ class RemoteNode(NodeController):
 
     def start_process(self, command: Sequence[str], log_path: str) -> ProcessHandle:
         status_path = f"{log_path}.status"
+        pid_path = f"{log_path}.pid"
         inner = (
             f"{shlex.join(command)} & child=$!; "
-            "trap 'kill -INT \"$child\" 2>/dev/null || true' INT; "
-            "trap 'kill -TERM \"$child\" 2>/dev/null || true' TERM; "
+            f"printf '%s' \"$child\" > {shlex.quote(pid_path)}; "
             "wait \"$child\"; code=$?; "
             f"printf '%s' \"$code\" > {shlex.quote(status_path)}; exit \"$code\"")
         launch = (f"nohup sh -c {shlex.quote(inner)} > {shlex.quote(log_path)} "
-                  "2>&1 < /dev/null & echo $!")
-        return ProcessHandle(int(self._exec(launch)), list(command), log_path)
+                  f"2>&1 < /dev/null & monitor=$!; "
+                  f"while test ! -s {shlex.quote(pid_path)}; do "
+                  "if ! kill -0 \"$monitor\" 2>/dev/null; then wait \"$monitor\"; exit $?; fi; "
+                  "sleep 0.01; done; "
+                  f"printf '%s %s\n' \"$monitor\" \"$(cat {shlex.quote(pid_path)})\"")
+        output = self._exec(launch).split()
+        if len(output) != 2:
+            raise RuntimeError(f"Remote process launch returned invalid PIDs: {' '.join(output)}")
+        monitor_pid, child_pid = map(int, output)
+        return ProcessHandle(child_pid, list(command), log_path,
+                             monitor_pid=monitor_pid)
 
     def wait_process(self, handle: ProcessHandle, timeout: float) -> int:
         # This is invoked only after the orchestrator's no-control-traffic timed
@@ -172,9 +182,12 @@ class RemoteNode(NodeController):
         status_path = f"{handle.log_path}.status"
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
+            monitor_check = (f"elif kill -0 {handle.monitor_pid} 2>/dev/null; then echo running; "
+                             if handle.monitor_pid is not None else "")
             output = self._exec(
-                f"if kill -0 {handle.pid} 2>/dev/null; then echo running; "
-                f"elif test -f {shlex.quote(status_path)}; then cat {shlex.quote(status_path)}; "
+                f"if test -f {shlex.quote(status_path)}; then cat {shlex.quote(status_path)}; "
+                f"elif kill -0 {handle.pid} 2>/dev/null; then echo running; "
+                f"{monitor_check}"
                 "else echo exited; fi")
             if output != "running":
                 if output == "exited":
@@ -557,8 +570,9 @@ def execute_run(item: RunTuple, config: dict[str, Any], session_id: str,
     remote_rx_stats, remote_tx_stats = remote_base + "_rx.json", remote_base + "_tx.json"
     receiver_log, sender_log = remote_base + "_receiver.log", remote_base + "_sender.log"
     receiver_artifacts = [remote_trace, remote_rx_stats, receiver_log,
-                          f"{receiver_log}.status"]
-    sender_artifacts = [remote_tx_stats, sender_log, f"{sender_log}.status"]
+                          f"{receiver_log}.status", f"{receiver_log}.pid"]
+    sender_artifacts = [remote_tx_stats, sender_log, f"{sender_log}.status",
+                        f"{sender_log}.pid"]
     rx_command = receiver_command(project_root, benchmark, runtime, remote_trace,
                                   remote_rx_stats, item.batch)
     tx_command = sender_command(project_root, benchmark_ip(nodes["receiver"]),

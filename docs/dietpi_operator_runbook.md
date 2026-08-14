@@ -469,7 +469,7 @@ On the receiver:
 cd /home/dietpi/net-latency-lab
 
 sudo env \
-  PROJECT_ROOT=/home/dietpi/net-latency-lab \
+  PROJECT_ROOT=/root/net-latency-lab \
   BUILD_SUBDIR=pi4-release \
   ./scripts/setup_env.sh \
   receiver \
@@ -483,7 +483,7 @@ On the sender:
 cd /home/dietpi/net-latency-lab
 
 sudo env \
-  PROJECT_ROOT=/home/dietpi/net-latency-lab \
+  PROJECT_ROOT=/root/net-latency-lab \
   BUILD_SUBDIR=pi4-release \
   ./scripts/setup_env.sh \
   sender \

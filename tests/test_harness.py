@@ -4,6 +4,9 @@ import copy
 import json
 import signal
 import struct
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -74,6 +77,52 @@ def test_node_cleanup_uses_explicit_paths_and_tolerates_missing_files(tmp_path):
     assert commands == [
         "rm -f -- /tmp/plain '/tmp/name with spaces' '/tmp/not;another-command'"
     ]
+
+
+def test_remote_process_tracks_and_signals_child_pid_before_reading_status():
+    remote = object.__new__(RemoteNode)
+    commands = []
+    responses = iter(["4100 4200", "", "0"])
+
+    def fake_exec(command, timeout=30.0):
+        commands.append(command)
+        return next(responses)
+
+    remote._exec = fake_exec
+    handle = remote.start_process(["/project/receiver", "--flag"], "/tmp/run.log")
+    assert handle.pid == 4200
+    assert handle.monitor_pid == 4100
+    assert "/tmp/run.log.pid" in commands[0]
+    assert "trap " not in commands[0]
+
+    remote.signal_process(handle, signal.SIGINT)
+    assert commands[1] == "kill -INT 4200 2>/dev/null || true"
+    assert remote.wait_process(handle, 1.0) == 0
+    assert commands[2].startswith("if test -f /tmp/run.log.status;")
+    assert "kill -0 4100" in commands[2]
+
+
+def test_remote_process_wrapper_records_signaled_child_exit(tmp_path):
+    remote = object.__new__(RemoteNode)
+
+    def local_shell_exec(command, timeout=30.0):
+        result = subprocess.run(["sh", "-c", command], check=True,
+                                capture_output=True, text=True, timeout=timeout)
+        return result.stdout.strip()
+
+    remote._exec = local_shell_exec
+    log_path = str(tmp_path / "remote-process.log")
+    handle = remote.start_process(
+        [sys.executable, "-c",
+         "import signal,time; signal.signal(signal.SIGINT, lambda *_: exit(0)); time.sleep(60)"],
+        log_path)
+    try:
+        time.sleep(0.05)
+        remote.signal_process(handle, signal.SIGINT)
+        assert remote.wait_process(handle, 2.0) == 0
+    finally:
+        remote.signal_process(handle, signal.SIGTERM)
+        remote.remove_files([log_path, f"{log_path}.status", f"{log_path}.pid"])
 
 
 class FakeNode(NodeController):
@@ -182,7 +231,8 @@ def test_fake_controller_pid_lifecycle_repetitions_and_metadata(monkeypatch, tmp
     assert all(fake.metadata_existed_at_cleanup)
     ordinary_suffixes = {
         ".bin", "_rx.json", "_receiver.log", "_receiver.log.status",
-        "_tx.json", "_sender.log", "_sender.log.status",
+        "_receiver.log.pid", "_tx.json", "_sender.log", "_sender.log.status",
+        "_sender.log.pid",
     }
     for request_pair in zip(fake.cleanup_requests[::2], fake.cleanup_requests[1::2]):
         cleaned = request_pair[0] + request_pair[1]

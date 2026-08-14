@@ -81,6 +81,19 @@ public:
     tail_.store(next_tail, std::memory_order_release);
   }
 
+  [[nodiscard]] bool empty() const noexcept {
+    return head_.load(std::memory_order_acquire) ==
+           tail_.load(std::memory_order_acquire);
+  }
+
+  [[nodiscard]] std::size_t size() const noexcept {
+    const auto head = head_.load(std::memory_order_acquire);
+    const auto tail = tail_.load(std::memory_order_acquire);
+    return (head - tail) & mask_;
+  }
+
+  static constexpr std::size_t usable_capacity() noexcept { return Capacity - 1; }
+
 private:
   static constexpr std::size_t mask_ = Capacity - 1;
 

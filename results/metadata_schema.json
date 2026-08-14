@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "net-latency-lab run metadata v2",
+  "type": "object",
+  "required": ["schema_version", "run_id", "repetition_id", "topology", "run", "sender_stats", "receiver_stats", "packet_accounting", "counters", "run_environment", "validity", "environment"],
+  "properties": {
+    "schema_version": {"const": 2},
+    "topology": {"enum": ["local_loopback", "distributed_ethernet"]},
+    "run": {
+      "type": "object",
+      "required": ["campaign", "receiver_variant", "requested_rate_pps", "duration_seconds", "payload_size", "batch_size", "work_ns", "sample_every", "post_sender_drain_seconds"]
+    },
+    "sender_stats": {
+      "type": "object",
+      "required": ["attempted_sends", "successful_sends", "failed_sends", "elapsed_seconds", "achieved_successful_send_pps", "requested_socket_buffer_bytes", "observed_socket_buffer_bytes"]
+    },
+    "receiver_stats": {
+      "type": "object",
+      "required": ["datagrams_received", "valid_packets", "unique_valid_packets", "receive_sequence_gaps", "receive_duplicates", "receive_reordered", "processed_packets", "unique_processed_packets", "processed_sequence_gaps", "short_packets", "invalid_magic", "unsupported_version", "spsc_overflow", "receive_syscalls", "sampled_packets", "first_receive_mono_ns", "last_receive_mono_ns", "first_processing_mono_ns", "last_processing_mono_ns", "drain_duration_ns", "queue_depth_at_shutdown", "socket_pending_bytes_at_shutdown", "requested_socket_buffer_bytes", "observed_socket_buffer_bytes"]
+    },
+    "packet_accounting": {
+      "type": "object",
+      "required": ["requested_rate_pps", "offered_pps", "received_pps", "processed_pps", "ingress_loss", "application_loss", "ingress_loss_pct", "application_loss_pct"]
+    },
+    "validity": {
+      "type": "object",
+      "required": ["valid", "reasons"]
+    }
+  }
+}

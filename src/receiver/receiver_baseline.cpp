@@ -1,183 +1,131 @@
-#include "common/csv_writer.hpp"
-#include "common/log.hpp"
-#include "common/packet.hpp"
-#include "common/thread_utils.hpp"
-#include "common/time.hpp"
+#include "receiver/receiver_common.hpp"
 
 #include <atomic>
 #include <csignal>
 #include <cstdio>
-#include <filesystem>
+#include <cstring>
 #include <getopt.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-constexpr std::size_t cache_line_size = 64;
-struct GlobalConfig {
-  uint16_t port = 49200;
-  uint16_t magic_number = 0x6584;
-  std::filesystem::path output_path = "latency_baseline.bin";
-  uint32_t max_packets = 100'000;
-  int cpu_affinity = 3;
-  uint64_t processing_time_ns = 0;
-};
 
-GlobalConfig g_config;
-std::atomic<bool> g_stop_requested{false};
+namespace {
+std::atomic<bool> stop_requested{false};
+void signal_handler(int) { stop_requested.store(true, std::memory_order_relaxed); }
 
-void signal_handler(int) { g_stop_requested = true; }
-
-class ScopedSocket {
-  int fd_;
-
-public:
-  ScopedSocket() : fd_(socket(AF_INET, SOCK_DGRAM, 0)) {
-    if (fd_ >= 0) {
-      struct timeval tv{.tv_sec = 0, .tv_usec = 100 * 1000};
-      setsockopt(fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-      int opt = 1;
-      if (setsockopt(fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
-          perror("setsockopt(SO_REUSEADDR) failed");
-      }
-      if (setsockopt(fd_, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) < 0) {
-          perror("setsockopt(SO_REUSEPORT) failed");
-      }
-    }
-  }
-  ~ScopedSocket() {
-    if (fd_ >= 0)
-      close(fd_);
-  }
-
-  ScopedSocket(const ScopedSocket &) = delete;
-  ScopedSocket &operator=(const ScopedSocket &) = delete;
-
-  [[nodiscard]] int get() const { return fd_; }
-  [[nodiscard]] bool is_valid() const { return fd_ >= 0; }
-};
-
-struct alignas(cache_line_size) Stats {
-  std::atomic<uint64_t> packets_processed{0};
-  std::atomic<uint64_t> accumulated_latency_ns{0};
-  std::atomic<uint64_t> dropped_packets{0};
-};
-
-Stats g_stats;
-
-void process_packet(nll::BinaryLogger<nll::LogEntry> &logger,
-                    const nll::message_header &mh, uint64_t rx_time) {
-
-  if (mh.magic != g_config.magic_number) {
-    NLL_WARN("Invalid Magic: %x\n", mh.magic);
-    return;
-  }
-  if (g_config.processing_time_ns > 0) {
-    uint64_t start = nll::mono_ns();
-    while (nll::mono_ns() - start < g_config.processing_time_ns) {
-      nll::thread::cpu_relax();
-    }
-  }
-  int64_t latency = rx_time - mh.send_unix_ns;
-
-  logger.log({.seq_idx = mh.seq_idx,
-              .tx_ts = mh.send_unix_ns,
-              .rx_ts = rx_time,
-              .latency_ns = latency});
-
-  g_stats.packets_processed.fetch_add(1, std::memory_order_relaxed);
-  g_stats.accumulated_latency_ns.fetch_add(latency, std::memory_order_relaxed);
+void usage(std::FILE *out) {
+  std::fprintf(out,
+      "Usage: receiver_baseline [options]\n"
+      "Synchronous recvfrom receiver; synthetic work runs inline.\n\n"
+      "  -o, --output PATH          versioned binary log (default latency.bin)\n"
+      "  -s, --stats PATH           structured JSON statistics\n"
+      "  -p, --port PORT            UDP port (1..65535)\n"
+      "  -c, --cpu CPU              receiver CPU affinity\n"
+      "  -n, --max-packets N        stop after N datagrams (0 = unlimited)\n"
+      "  -S, --scheduler POLICY     other, fifo, or rr\n"
+      "  -P, --priority N           0 for other; 1..99 for fifo/rr\n"
+      "  -W, --work NS              synthetic processing per valid packet\n"
+      "  -e, --sample-every N      log every Nth valid packet (0 = counts only)\n"
+      "  -B, --socket-buffer BYTES requested SO_RCVBUF size (0 = system default)\n"
+      "  -h, --help                 show this help\n");
 }
-
-void print_usage() {
-  printf("Usage: receiver_baseline [options]\n");
-  printf("Options:\n");
-  printf("  -o, --output <path>    Path to output bin file\n");
-  printf("  -p, --port <port>      UDP port to bind (default: 49200)\n");
-  printf("  -c, --cpu <id>         CPU core to pin to (default: 3)\n");
 }
 
 int main(int argc, char **argv) {
-  std::signal(SIGINT, signal_handler);
-
-  struct option long_options[] = {{"output", required_argument, 0, 'o'},
-                                  {"port", required_argument, 0, 'p'},
-                                  {"cpu", required_argument, 0, 'c'},
-                                  {"work", required_argument, 0, 'W'},
-                                  {0, 0, 0, 0}};
-
-  int opt;
-  while ((opt = getopt_long(argc, argv, "o:p:c:W", long_options, nullptr)) !=
-         -1) {
+  nll::receiver::Config config{.variant = "baseline"};
+  const option options[] = {{"output", required_argument, nullptr, 'o'},
+                            {"stats", required_argument, nullptr, 's'},
+                            {"port", required_argument, nullptr, 'p'},
+                            {"cpu", required_argument, nullptr, 'c'},
+                            {"max-packets", required_argument, nullptr, 'n'},
+                            {"scheduler", required_argument, nullptr, 'S'},
+                            {"priority", required_argument, nullptr, 'P'},
+                            {"work", required_argument, nullptr, 'W'},
+                            {"sample-every", required_argument, nullptr, 'e'},
+                            {"socket-buffer", required_argument, nullptr, 'B'},
+                            {"help", no_argument, nullptr, 'h'},
+                            {nullptr, 0, nullptr, 0}};
+  int opt = 0;
+  while ((opt = getopt_long(argc, argv, "o:s:p:c:n:S:P:W:e:B:h", options, nullptr)) != -1) {
+    std::uint64_t value = 0;
     switch (opt) {
-    case 'o':
-      g_config.output_path = optarg;
-      break;
+    case 'o': config.output_path = optarg; break;
+    case 's': config.stats_path = optarg; break;
     case 'p':
-      g_config.port = static_cast<uint16_t>(std::stoi(optarg));
-      break;
+      if (!nll::receiver::parse_u64(optarg, 1, 65535, value, "port")) return 2;
+      config.port = static_cast<std::uint16_t>(value); break;
     case 'c':
-      g_config.cpu_affinity = std::stoi(optarg);
+      if (!nll::receiver::parse_int(optarg, 0, CPU_SETSIZE - 1, config.cpu, "CPU")) return 2;
+      break;
+    case 'n':
+      if (!nll::receiver::parse_u64(optarg, 0, UINT64_MAX, config.max_packets, "max packets")) return 2;
+      break;
+    case 'S': config.scheduler = optarg; break;
+    case 'P':
+      if (!nll::receiver::parse_int(optarg, 0, 99, config.priority, "priority")) return 2;
       break;
     case 'W':
-      g_config.processing_time_ns = std::stoi(optarg);
+      if (!nll::receiver::parse_u64(optarg, 0, UINT64_MAX, config.work_ns, "work")) return 2;
       break;
-    default:
-      print_usage();
-      return 1;
+    case 'e':
+      if (!nll::receiver::parse_u64(optarg, 0, UINT64_MAX, config.sample_every, "sample every")) return 2;
+      break;
+    case 'B': {
+      int bytes = 0;
+      if (!nll::receiver::parse_int(optarg, 0, INT_MAX, bytes, "socket buffer")) return 2;
+      config.socket_buffer_bytes = bytes; break;
+    }
+    case 'h': usage(stdout); return 0;
+    default: usage(stderr); return 2;
     }
   }
-
-  if (g_config.output_path.has_parent_path()) {
-    std::filesystem::create_directories(g_config.output_path.parent_path());
+  if (optind != argc || !nll::receiver::validate_scheduler(config)) return 2;
+  if (config.output_path.has_parent_path()) {
+    std::error_code ec;
+    std::filesystem::create_directories(config.output_path.parent_path(), ec);
+    if (ec) { std::fprintf(stderr, "Cannot create output directory: %s\n", ec.message().c_str()); return 1; }
   }
 
-  ScopedSocket sock;
-  if (!sock.is_valid()) {
-    NLL_ERROR("Failed to create socket\n");
-    return 1;
-  }
+  std::signal(SIGINT, signal_handler);
+  nll::receiver::ScopedSocket socket(config.socket_buffer_bytes);
+  if (!socket.valid() || !nll::receiver::bind_socket(socket.get(), config.port)) return 1;
+  auto affinity = nll::receiver::apply_affinity(config.cpu);
+  auto scheduler = nll::thread::set_scheduler(config.scheduler, config.priority);
+  nll::BinaryLogger logger(config.output_path);
+  if (!logger.is_open()) return 1;
+  nll::receiver::Stats stats;
+  stats.requested_socket_buffer_bytes = socket.requested_buffer_bytes();
+  stats.observed_socket_buffer_bytes = socket.observed_buffer_bytes();
+  nll::SequenceTracker receive_sequences;
+  nll::receiver::ProcessingStats processing;
+  std::byte buffer[65535];
 
-  sockaddr_in addr{.sin_family = AF_INET,
-                   .sin_port = htons(g_config.port),
-                   .sin_addr = {.s_addr = INADDR_ANY},
-                   .sin_zero = {0}};
-
-  if (bind(sock.get(), reinterpret_cast<struct sockaddr *>(&addr),
-           sizeof(addr)) < 0) {
-    NLL_ERROR("Bind failed on port %d\n", g_config.port);
-    return 1;
-  }
-
-  nll::thread::pin_to_core(g_config.cpu_affinity);
-  nll::thread::set_realtime_priority();
-
-  NLL_INFO("Baseline Receiver (Synchronous) running on Core %d...\n",
-           g_config.cpu_affinity);
-  NLL_INFO("Logging to: %s\n", g_config.output_path.c_str());
-
-  {
-    nll::BinaryLogger<nll::LogEntry> logger(g_config.output_path);
-    nll::message_header packet;
-
-    while (!g_stop_requested) {
-      ssize_t len =
-          recvfrom(sock.get(), &packet, sizeof(packet), 0, nullptr, nullptr);
-      uint64_t rx_ts = nll::real_ns();
-
-      if (len > 0) {
-        if (static_cast<size_t>(len) < sizeof(nll::message_header)) {
-          g_stats.dropped_packets.fetch_add(1, std::memory_order_relaxed);
-          continue;
-        }
-
-        packet.to_host();
-        process_packet(logger, packet, rx_ts);
-      }
+  while (!stop_requested.load(std::memory_order_relaxed) &&
+         (config.max_packets == 0 || stats.datagrams_received < config.max_packets)) {
+    const ssize_t length = ::recvfrom(socket.get(), buffer, sizeof(buffer), 0, nullptr, nullptr);
+    const std::uint64_t receive_ts = config.sample_every != 0 ? nll::real_ns() : 0;
+    const std::uint64_t receive_mono_ts = nll::mono_ns();
+    ++stats.receive_syscalls;
+    if (length < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) continue;
+      ++stats.socket_errors; break;
     }
+    ++stats.datagrams_received;
+    if (static_cast<std::size_t>(length) < sizeof(nll::message_header)) {
+      ++stats.short_packets; continue;
+    }
+    nll::message_header message{};
+    std::memcpy(&message, buffer, sizeof(message));
+    message.to_host();
+    if (message.magic != 0x6584) { ++stats.invalid_magic; continue; }
+    if (message.version != 1) { ++stats.unsupported_version; continue; }
+    auto packet = nll::receiver::account_receive(stats, receive_sequences, message,
+                                                  receive_ts, receive_mono_ts,
+                                                  config.sample_every);
+    nll::receiver::process_packet(logger, processing, packet, config.work_ns);
   }
-
-  NLL_INFO("\nShutdown.\n");
-  NLL_INFO("  Processed: %lu\n", g_stats.packets_processed.load());
-  NLL_INFO("  Dropped:   %lu\n", g_stats.dropped_packets.load());
-
-  return 0;
+  stats.interrupted = stop_requested.load(std::memory_order_relaxed);
+  stats.socket_pending_bytes_at_shutdown = nll::receiver::pending_socket_bytes(socket.get());
+  nll::receiver::finalize_receive_sequences(stats, receive_sequences);
+  nll::receiver::merge_processing(stats, processing);
+  logger.flush();
+  const bool stats_ok = nll::receiver::write_stats(config, stats, affinity, scheduler);
+  return stats_ok ? 0 : 1;
 }

@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
 VENV_PYTHON="./.venv/bin/python"
 MAIN_SCRIPT="main.py"
@@ -9,5 +10,4 @@ if [ ! -f "$VENV_PYTHON" ]; then
     exit 1
 fi
 
-sudo SSH_AUTH_SOCK="$SSH_AUTH_SOCK" "$VENV_PYTHON" "$MAIN_SCRIPT" "$@"
-
+exec "$VENV_PYTHON" "$MAIN_SCRIPT" "$@"

@@ -1,83 +1,229 @@
-import os
-import yaml
-import glob
-import pandas as pd
-import numpy as np
+"""Generate auditable per-run and repetition summaries from archived sessions."""
+
+from __future__ import annotations
+
 import argparse
+import glob
+import json
+import os
 import sys
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+import yaml
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from latency_utils import load_binary_file, remove_clock_drift
+from latency_utils import load_binary_file, remove_clock_drift, require_corrected_latency
+
+QUANTILE_METHOD = "linear"
+REQUIRED_TOP_LEVEL = {"schema_version", "run_id", "repetition_id", "topology",
+                      "run", "sender_stats", "receiver_stats", "counters", "environment"}
+REQUIRED_RUN_FIELDS = {"receiver_variant", "requested_rate_pps", "duration_seconds",
+                       "payload_size", "mode", "burst_size", "batch_size", "work_ns"}
 
 
-def process_directory(root_dir):
-    summary_rows = []
+def validate_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(metadata, dict):
+        raise ValueError("Run metadata must be an object")
+    missing = sorted(REQUIRED_TOP_LEVEL - metadata.keys())
+    if missing:
+        raise ValueError(f"Run metadata missing fields: {', '.join(missing)}")
+    if metadata["topology"] not in {"local_loopback", "distributed_ethernet"}:
+        raise ValueError("topology must be local_loopback or distributed_ethernet")
+    run = metadata.get("run")
+    if not isinstance(run, dict):
+        raise ValueError("run metadata must be an object")
+    missing_run = sorted(REQUIRED_RUN_FIELDS - run.keys())
+    if missing_run:
+        raise ValueError(f"Run settings missing fields: {', '.join(missing_run)}")
+    sender, receiver = metadata.get("sender_stats"), metadata.get("receiver_stats")
+    sender_required = {"attempted_sends", "successful_sends", "failed_sends",
+                       "elapsed_seconds", "achieved_successful_send_pps"}
+    receiver_required = {"datagrams_received", "valid_packets", "processed_packets",
+                         "short_packets", "invalid_magic", "spsc_overflow"}
+    if not isinstance(sender, dict) or sender_required - sender.keys():
+        raise ValueError(f"sender_stats missing fields: {', '.join(sorted(sender_required - set(sender or {})))}")
+    if not isinstance(receiver, dict) or receiver_required - receiver.keys():
+        raise ValueError(f"receiver_stats missing fields: {', '.join(sorted(receiver_required - set(receiver or {})))}")
+    if int(sender["attempted_sends"]) != int(sender["successful_sends"]) + int(sender["failed_sends"]):
+        raise ValueError("sender attempts must equal successes plus failures")
+    if int(receiver["processed_packets"]) + int(receiver["spsc_overflow"]) > int(receiver["valid_packets"]):
+        raise ValueError("processed plus SPSC overflow exceeds valid received packets")
+    if int(metadata.get("schema_version", 1)) >= 2:
+        for field in ("unique_valid_packets", "unique_processed_packets",
+                      "receive_sequence_gaps", "receive_duplicates", "receive_reordered"):
+            if field not in receiver:
+                raise ValueError(f"receiver_stats missing v2 field: {field}")
+        if not isinstance(metadata.get("validity"), dict):
+            raise ValueError("v2 metadata requires validity verdict")
+        if int(receiver["processed_packets"]) + int(receiver["spsc_overflow"]) != int(receiver["valid_packets"]):
+            raise ValueError("v2 processed plus SPSC overflow must equal valid received packets")
+    return metadata
 
-    meta_files = glob.glob(os.path.join(root_dir, "**", "*_meta.yaml"), recursive=True)
-    print(f"Found {len(meta_files)} experiments.")
 
-    for meta_path in meta_files:
-        exp_dir = os.path.dirname(meta_path)
-        base_name = os.path.basename(meta_path).replace("_meta.yaml", "")
-        bin_path = os.path.join(exp_dir, f"{base_name}.bin")
+def linear_quantile(series: pd.Series, q: float) -> float:
+    return float(series.quantile(q, interpolation=QUANTILE_METHOD))
 
-        with open(meta_path, "r") as f:
-            config = yaml.safe_load(f)
 
-        if not os.path.exists(bin_path):
+def _read_metadata(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        return json.load(handle) if path.suffix == ".json" else yaml.safe_load(handle)
+
+
+def _latency_fields(frame: pd.DataFrame) -> dict[str, Any]:
+    names = {
+        "clock_drift_slope_us_per_s": None, "clock_correction_applied": False,
+        "receive_latency_min_us": None, "receive_latency_mean_us": None,
+        "receive_latency_p50_us": None, "receive_latency_p99_us": None,
+        "receive_latency_p999_us": None, "receive_latency_max_us": None,
+        "receive_latency_std_us": None, "jitter_p99_us": None,
+    }
+    for prefix in ("queue_delay", "processing_time", "total_latency"):
+        for quantile in ("p50", "p99", "p999"):
+            names[f"{prefix}_{quantile}_us"] = None
+    if frame.empty:
+        return names
+    clean, slope = remove_clock_drift(frame)
+    require_corrected_latency(clean)
+    latency = clean["latency_corrected_us"]
+    names.update({
+        "clock_drift_slope_us_per_s": slope,
+        "clock_correction_applied": bool(clean["clock_correction_applied"].iloc[0]),
+        "receive_latency_min_us": float(latency.min()),
+        "receive_latency_mean_us": float(latency.mean()),
+        "receive_latency_p50_us": linear_quantile(latency, .5),
+        "receive_latency_p99_us": linear_quantile(latency, .99),
+        "receive_latency_p999_us": linear_quantile(latency, .999),
+        "receive_latency_max_us": float(latency.max()),
+        "receive_latency_std_us": float(latency.std()),
+        "jitter_p99_us": linear_quantile(clean["jitter_us"].dropna(), .99) if len(clean) > 1 else 0.0,
+    })
+    for source, prefix in (("application_queue_delay_us", "queue_delay"),
+                           ("processing_time_us", "processing_time"),
+                           ("total_application_latency_us", "total_latency")):
+        values = clean[source]
+        names[f"{prefix}_p50_us"] = linear_quantile(values, .5)
+        names[f"{prefix}_p99_us"] = linear_quantile(values, .99)
+        names[f"{prefix}_p999_us"] = linear_quantile(values, .999)
+    return names
+
+
+def summarize_run(metadata: dict[str, Any], frame: pd.DataFrame,
+                  trace_path: Path) -> dict[str, Any]:
+    validate_metadata(metadata)
+    run, sender, receiver = metadata["run"], metadata["sender_stats"], metadata["receiver_stats"]
+    successful = int(sender["successful_sends"])
+    received = int(receiver.get("unique_valid_packets", receiver["valid_packets"]))
+    processed = int(receiver.get("unique_processed_packets", receiver["processed_packets"]))
+    elapsed = float(sender["elapsed_seconds"])
+    ingress_loss, application_loss = successful - received, successful - processed
+    row: dict[str, Any] = {
+        "run_id": metadata["run_id"], "repetition_id": metadata["repetition_id"],
+        "topology": metadata["topology"], "trace_path": str(trace_path),
+        "campaign": run.get("campaign", "legacy"), "receiver": run["receiver_variant"],
+        "requested_rate_pps": int(run["requested_rate_pps"]),
+        "offered_pps": successful / elapsed if elapsed > 0 else 0.0,
+        "received_pps": received / elapsed if elapsed > 0 else 0.0,
+        "processed_pps": processed / elapsed if elapsed > 0 else 0.0,
+        "achieved_sender_rate_pps": float(sender["achieved_successful_send_pps"]),
+        "sender_runtime_seconds": elapsed,
+        "send_attempts": int(sender["attempted_sends"]), "send_successes": successful,
+        "send_failures": int(sender["failed_sends"]), "received_packets": received,
+        "processed_packets": processed, "ingress_loss": ingress_loss,
+        "application_loss": application_loss,
+        "ingress_loss_pct": 100.0 * ingress_loss / successful if successful else 0.0,
+        "application_loss_pct": 100.0 * application_loss / successful if successful else 0.0,
+        "sequence_gap_loss": int(receiver.get("receive_sequence_gaps", 0)),
+        "duplicates": int(receiver.get("receive_duplicates", 0)),
+        "reordered": int(receiver.get("receive_reordered", 0)),
+        "processed_sequence_gaps": int(receiver.get("processed_sequence_gaps", 0)),
+        "udp_rcvbuf_errors_delta": metadata["counters"].get("udp_rcvbuf_errors", {}).get("delta"),
+        "nic_rx_dropped_delta": metadata["counters"].get("nic_rx_dropped", {}).get("delta"),
+        "nic_rx_errors_delta": metadata["counters"].get("nic_rx_errors", {}).get("delta"),
+        "nic_rx_missed_errors_delta": metadata["counters"].get("nic_rx_missed_errors", {}).get("delta"),
+        "spsc_overflow": int(receiver["spsc_overflow"]),
+        "receive_syscalls": int(receiver.get("receive_syscalls", 0)),
+        "sampled_packets": int(receiver.get("sampled_packets", len(frame))),
+        "requested_receive_buffer_bytes": int(receiver.get("requested_socket_buffer_bytes", 0)),
+        "observed_receive_buffer_bytes": int(receiver.get("observed_socket_buffer_bytes", 0)),
+        "requested_send_buffer_bytes": int(sender.get("requested_socket_buffer_bytes", 0)),
+        "observed_send_buffer_bytes": int(sender.get("observed_socket_buffer_bytes", 0)),
+        "drain_duration_ns": int(receiver.get("drain_duration_ns", 0)),
+        "queue_depth_at_shutdown": int(receiver.get("queue_depth_at_shutdown", 0)),
+        "socket_pending_bytes_at_shutdown": int(receiver.get("socket_pending_bytes_at_shutdown", 0)),
+        "run_valid": bool(metadata.get("validity", {}).get("valid", True)),
+        "invalid_reasons": "; ".join(metadata.get("validity", {}).get("reasons", [])),
+        "mode": run["mode"], "burst_size": int(run["burst_size"]),
+        "batch_size": int(run["batch_size"]), "payload_size": int(run["payload_size"]),
+        "duration_seconds": float(run["duration_seconds"]), "work_ns": int(run["work_ns"]),
+        "sample_every": int(run.get("sample_every", 1)),
+    }
+    row["sustainable_run"] = bool(
+        row["run_valid"] and row["send_failures"] == 0 and
+        row["offered_pps"] >= .99 * row["requested_rate_pps"] and
+        0 <= row["application_loss_pct"] <= .1)
+    row.update(_latency_fields(frame))
+    return row
+
+
+def aggregate_repetitions(per_run: pd.DataFrame) -> pd.DataFrame:
+    group_columns = ["topology", "campaign", "receiver", "requested_rate_pps", "mode",
+                     "burst_size", "batch_size", "payload_size", "duration_seconds",
+                     "work_ns", "sample_every"]
+    # Compatibility with unit tests constructing older frames.
+    group_columns = [column for column in group_columns if column in per_run.columns]
+    numeric = [column for column in per_run.select_dtypes(include="number").columns
+               if column not in group_columns and column != "repetition_id"]
+    rows: list[dict[str, Any]] = []
+    for key, group in per_run.groupby(group_columns, dropna=False, sort=True):
+        if not isinstance(key, tuple):
+            key = (key,)
+        row = dict(zip(group_columns, key))
+        row["repetitions"] = len(group)
+        if "sustainable_run" in group:
+            row["all_repetitions_sustainable"] = bool(group["sustainable_run"].all())
+        if "run_valid" in group:
+            row["all_repetitions_valid"] = bool(group["run_valid"].all())
+        for column in numeric:
+            values = group[column].dropna()
+            row[f"{column}_median"] = linear_quantile(values, .5) if not values.empty else None
+            row[f"{column}_q25"] = linear_quantile(values, .25) if not values.empty else None
+            row[f"{column}_q75"] = linear_quantile(values, .75) if not values.empty else None
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def process_directory(root_dir: os.PathLike[str] | str) -> tuple[Path, Path] | None:
+    root = Path(root_dir)
+    metadata_paths = sorted(Path(path) for pattern in ("**/*_meta.json", "**/*_meta.yaml")
+                            for path in glob.glob(str(root / pattern), recursive=True))
+    rows: list[dict[str, Any]] = []
+    for metadata_path in metadata_paths:
+        metadata = _read_metadata(metadata_path)
+        if "run_id" not in metadata:
+            print(f"Skipping legacy/incomplete metadata: {metadata_path}")
             continue
-
-        df = load_binary_file(bin_path)
-        if df.empty:
-            continue
-
-        seq_min, seq_max = df["seq"].min(), df["seq"].max()
-        expected = seq_max - seq_min + 1
-        loss_pct = 100.0 * (1.0 - (len(df) / expected)) if expected > 0 else 0
-
-        df_clean, drift_slope = remove_clock_drift(df)
-        lat = df_clean["latency_corrected_us"]
-
-        rx_bin = config.get("rx_binary", "unknown").replace("receiver_", "")
-        batch_size = config.get("batch_size", 1) if "threaded" in rx_bin else 1
-        if "threaded" in rx_bin:
-            display_name = f"{rx_bin} (B={batch_size})"
-        else:
-            display_name = rx_bin
-        row = {
-            "campaign": config.get("campaign", "unknown"),
-            "receiver": display_name,
-            "rate_pps": int(config.get("rate_pps", 0)),
-            "mode": config.get("mode", "steady"),
-            "burst_size": int(config.get("burst", 1)),
-            "batch_size": int(batch_size),
-            "duration": config.get("duration", 0),
-            "throughput_rx_pps": len(df) / config.get("duration", 1),
-            "loss_pct": loss_pct,
-            "lat_min": lat.min(),
-            "lat_mean": lat.mean(),
-            "lat_p50": lat.median(),
-            "lat_p99": lat.quantile(0.99),
-            "lat_p999": lat.quantile(0.999),
-            "lat_max": lat.max(),
-            "lat_std": lat.std(),
-            "jitter_p99": df_clean["jitter_us"].quantile(0.99),
-        }
-        summary_rows.append(row)
-
-    if summary_rows:
-        master_df = pd.DataFrame(summary_rows)
-        master_df.sort_values(by=["receiver", "rate_pps", "burst_size"], inplace=True)
-
-        out_file = os.path.join(root_dir, "master_summary.csv")
-        master_df.to_csv(out_file, index=False)
-        print(f"Summary generated: {out_file}")
-    else:
-        print("No valid data found.")
+        trace_path = metadata_path.with_name(metadata_path.name.replace("_meta.json", ".bin").replace("_meta.yaml", ".bin"))
+        if not trace_path.exists():
+            raise FileNotFoundError(f"Trace referenced by metadata is missing: {trace_path}")
+        rows.append(summarize_run(metadata, load_binary_file(trace_path), trace_path))
+    if not rows:
+        print("No complete run metadata found.")
+        return None
+    per_run = pd.DataFrame(rows).sort_values(["campaign", "receiver", "requested_rate_pps",
+                                              "batch_size", "repetition_id"])
+    aggregate = aggregate_repetitions(per_run)
+    per_run_path, aggregate_path = root / "per_run_summary.csv", root / "repetition_summary.csv"
+    per_run.to_csv(per_run_path, index=False)
+    aggregate.to_csv(aggregate_path, index=False)
+    print(f"Per-run summary: {per_run_path}")
+    print(f"Repetition aggregate: {aggregate_path}")
+    return per_run_path, aggregate_path
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("dir", help="Root directory containing session data")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("dir", help="session directory")
     args = parser.parse_args()
     process_directory(args.dir)

@@ -1,37 +1,74 @@
 global:
+  topology: local_loopback
   remote_project_root: "."
   local_project_root: "."
-  user: "root"
-  local_data_dir: "analysis/data"
+  local_data_dir: "results/sessions"
+  user: "unused-in-local-mode"
+  metadata_collection: true
+  tuning_state: "not_applied"
   nodes:
-    receiver_ip: "127.0.0.1"
-    sender_ip: "127.0.0.1"
-    receiver_iface: "lo"
+    receiver:
+      management_host: "127.0.0.1"
+      benchmark_ip: "127.0.0.1"
+      interface: "lo"
+    sender:
+      management_host: "127.0.0.1"
+      benchmark_ip: "127.0.0.1"
+  runtime:
+    repetitions: 2
+    port: 49200
+    receiver_startup_seconds: 0.15
+    shutdown_timeout_seconds: 5
+    post_sender_drain_seconds: 0.1
+    shuffle_seed: 477
+    receive_buffer_bytes: 0
+    send_buffer_bytes: 0
+    receiver_cpu: null
+    worker_cpu: null
+    sender_cpu: null
+    scheduler: "other"
+    priority: 0
+    privilege_prefix: []
+    build_preset: dev
+    build_subdir: dev
 
 benchmarks:
-  - name: "threaded"
+  - name: baseline
     enabled: true
     receiver:
-      binary: "receiver_threaded"
-      cpu_affinity: 3
-      batch_size: [16,32]  
-      processing_time_ns: 10000
+      binary: receiver_baseline
+      batch_sizes: [1]
+      work_ns: 0
+      sample_every: 1
     sender:
-      mode: "steady"
-      duration_sec: 5
-      rates_pps: [1000,5000,10000,25000,50000,75000,100000, 500000, 1000000]
+      mode: steady
+      duration_seconds: 1
+      rates_pps: [1000, 10000]
+      burst_sizes: [1]
       payload_size: 64
-  - name: "baseline"
+  - name: batched
     enabled: true
     receiver:
-      binary: "receiver_baseline"
-      cpu_affinity: 3
-      processing_time_ns: 10000
+      binary: receiver_batched
+      batch_sizes: [1, 8, 32]
+      work_ns: 0
+      sample_every: 1
     sender:
-      mode: "steady"
-      duration_sec: 5
-      rates_pps: [1000,5000,10000,25000,50000,75000,100000, 500000, 1000000]
+      mode: steady
+      duration_seconds: 1
+      rates_pps: [1000, 10000]
+      burst_sizes: [1]
       payload_size: 64
-
-
-
+  - name: threaded
+    enabled: true
+    receiver:
+      binary: receiver_threaded
+      batch_sizes: [1, 8, 32]
+      work_ns: 10000
+      sample_every: 1
+    sender:
+      mode: steady
+      duration_seconds: 1
+      rates_pps: [1000, 10000]
+      burst_sizes: [1]
+      payload_size: 64

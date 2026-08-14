@@ -1,291 +1,103 @@
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
+"""Generate the two predeclared recruiter-facing figures from physical data."""
+
+from __future__ import annotations
+
 import argparse
-import os
-import sys
+from pathlib import Path
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from latency_utils import load_binary_file, remove_clock_drift
-
-sns.set_theme(style="whitegrid", context="paper", font_scale=1.2)
+import matplotlib.pyplot as plt
+import pandas as pd
 
 
-def get_variant_label(row):
-    """Helper to create distinct labels for plots"""
-    if "threaded" in row["receiver"]:
-        b = int(row.get("batch_size", 1))
-        return f"Threaded (B={b})"
-    return "Baseline"
+def label(row: pd.Series) -> str:
+    return f"{row.receiver} b={int(row.batch_size)}"
 
 
-def plot_steady_state_curve(df, output_dir):
-    """Fig 1: Latency vs PPS (Steady Mode only)"""
-    subset = df[(df["mode"] == "steady") & (df["burst_size"] <= 1)].copy()
-    if subset.empty:
-        return
-
-    subset["Variant"] = subset.apply(get_variant_label, axis=1)
-
-    plt.figure(figsize=(10, 6))
-    ax = sns.lineplot(
-        data=subset,
-        x="rate_pps",
-        y="lat_p99",
-        hue="Variant",
-        style="Variant",
-        markers=True,
-        dashes=False,
-        linewidth=2.5,
-        markersize=9,
-    )
-
-    ax.set_title("Steady State: Latency vs. Throughput", fontweight="bold")
-    ax.set_xlabel("Offered Load (Packets/Sec)")
-    ax.set_ylabel("99th Percentile Latency (µs)")
-    ax.set_yscale("log")
-    ax.grid(True, which="minor", linestyle=":", linewidth=0.5)
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "fig_1_steady_latency.png"), dpi=300)
-    print("Generated Fig 1: Steady State Curve")
-
-
-def plot_burst_impact(df, output_dir):
-    """Fig 2: Burst Tolerance - Latency vs Burst Size"""
-    subset = df[df["mode"] == "burst"].copy()
-    if subset.empty:
-        return
-
-    subset["Variant"] = subset.apply(get_variant_label, axis=1)
-
-    plt.figure(figsize=(8, 5))
-    ax = sns.barplot(
-        data=subset, x="burst_size", y="lat_p99", hue="Variant", palette="viridis"
-    )
-    ax.set_title("Burst Resilience", fontweight="bold")
-    ax.set_xlabel("Burst Size (Packets)")
-    ax.set_ylabel("99th %ile Latency (µs)")
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "fig_2_burst_impact.png"), dpi=300)
-    print("Generated Fig 2: Burst Impact")
+def figure_throughput(per_run: pd.DataFrame, output: Path) -> Path:
+    physical = per_run[per_run.topology == "distributed_ethernet"]
+    campaigns = [("raw", "Raw (0 ns work)"), ("workload_10us", "10 µs work")]
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8), sharex=False)
+    for row_index, (campaign, title) in enumerate(campaigns):
+        data = physical[physical.campaign == campaign]
+        if data.empty:
+            raise ValueError(f"Physical campaign {campaign!r} is missing")
+        grouped = data.groupby(["receiver", "batch_size", "requested_rate_pps"], as_index=False).agg(
+            offered_median=("offered_pps", "median"),
+            processed_median=("processed_pps", "median"),
+            processed_q25=("processed_pps", lambda x: x.quantile(.25)),
+            processed_q75=("processed_pps", lambda x: x.quantile(.75)),
+            loss_median=("application_loss_pct", "median"),
+            loss_q25=("application_loss_pct", lambda x: x.quantile(.25)),
+            loss_q75=("application_loss_pct", lambda x: x.quantile(.75)))
+        for (_receiver, _batch), series in grouped.groupby(["receiver", "batch_size"]):
+            series = series.sort_values("offered_median")
+            series_label = label(series.iloc[0])
+            axes[row_index, 0].plot(series.offered_median, series.processed_median,
+                                    marker="o", linewidth=1, label=series_label)
+            axes[row_index, 0].fill_between(series.offered_median, series.processed_q25,
+                                            series.processed_q75, alpha=.12)
+            axes[row_index, 1].plot(series.offered_median, series.loss_median,
+                                    marker="o", linewidth=1, label=series_label)
+            axes[row_index, 1].fill_between(series.offered_median, series.loss_q25,
+                                            series.loss_q75, alpha=.12)
+        axes[row_index, 0].set_title(f"{title}: processed rate")
+        axes[row_index, 1].set_title(f"{title}: application loss")
+        axes[row_index, 0].set_ylabel("Processed packets/s (median, IQR)")
+        axes[row_index, 1].set_ylabel("Application loss % (median, IQR)")
+        axes[row_index, 1].axhline(.1, color="black", linestyle="--", linewidth=.8)
+        for axis in axes[row_index]:
+            axis.set_xlabel("Offered packets/s (actual)")
+            axis.grid(alpha=.25)
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="center right", fontsize=7)
+    fig.tight_layout(rect=(0, 0, .86, 1))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=180)
+    plt.close(fig)
+    return output
 
 
-def plot_jitter_and_loss(df, output_dir):
-    """
-    Fig 3 (Revised): Jitter Stability vs. Load with Loss Overlay
-    Uses a Dual Y-Axis to show that low jitter at high load
-    is a symptom of packet loss (Survivor Bias).
-    """
-    subset = df[(df["mode"] == "steady") & (df["burst_size"] <= 1)].copy()
-    if subset.empty:
-        return
-
-    subset["Variant"] = subset.apply(get_variant_label, axis=1)
-
-    # Setup the figure and primary axis (Jitter)
-    fig, ax1 = plt.subplots(figsize=(10, 6))
-
-    # Plot 1: Jitter on Left Axis (Solid Lines)
-    sns.lineplot(
-        data=subset,
-        x="rate_pps",
-        y="jitter_p99",
-        hue="Variant",
-        style="Variant",
-        markers=True,
-        dashes=False,  # Force solid lines for Jitter
-        linewidth=2.5,
-        markersize=9,
-        ax=ax1,
-        legend=False,  # We will build a custom legend
-    )
-
-    ax1.set_title("Jitter Stability vs. Load (with Packet Loss)", fontweight="bold")
-    ax1.set_xlabel("Offered Load (Packets/Sec)")
-    ax1.set_ylabel("99th %ile Jitter (µs)")
-    ax1.grid(True, which="minor", linestyle=":", linewidth=0.5)
-
-    # Setup the secondary axis (Packet Loss)
-    ax2 = ax1.twinx()
-
-    # Plot 2: Packet Loss on Right Axis (Dashed Lines)
-    # We use the same hue order so colors match the Jitter lines
-    variants = sorted(subset["Variant"].unique())
-    palette = sns.color_palette(n_colors=len(variants))
-
-    for i, variant in enumerate(variants):
-        var_data = subset[subset["Variant"] == variant]
-        ax2.plot(
-            var_data["rate_pps"],
-            var_data["loss_pct"],
-            color=palette[i],
-            linestyle="--",  # Dashed for Loss
-            alpha=0.6,  # Slightly transparent
-            linewidth=2,
-        )
-
-    ax2.set_ylabel("Packet Loss (%) - (Dashed Lines)")
-    ax2.set_ylim(0, 100)  # Fix loss scale 0-100%
-
-    # Custom Legend
-    from matplotlib.lines import Line2D
-
-    legend_elements = []
-    for i, variant in enumerate(variants):
-        # Add the color entry for the variant
-        legend_elements.append(Line2D([0], [0], color=palette[i], lw=2, label=variant))
-
-    # Add key for Solid vs Dashed
-    legend_elements.append(Line2D([0], [0], color="gray", lw=2, label="Solid = Jitter"))
-    legend_elements.append(
-        Line2D([0], [0], color="gray", lw=2, linestyle="--", label="Dashed = Loss")
-    )
-
-    ax1.legend(handles=legend_elements, loc="upper left")
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "fig_3_jitter_with_loss.png"), dpi=300)
-    print("Generated Fig 3: Jitter Curve with Loss Overlay")
-
-
-def plot_packet_loss(df, output_dir):
-    """Fig 4: Packet Loss vs Throughput (The 'Cliff')"""
-    subset = df[(df["mode"] == "steady") & (df["burst_size"] <= 1)].copy()
-    if subset.empty:
-        return
-
-    subset["Variant"] = subset.apply(get_variant_label, axis=1)
-
-    plt.figure(figsize=(10, 6))
-    ax = sns.lineplot(
-        data=subset,
-        x="rate_pps",
-        y="loss_pct",
-        hue="Variant",
-        style="Variant",
-        markers=True,
-        linewidth=2.5,
-    )
-
-    ax.set_title("Reliability: Packet Loss vs. Load", fontweight="bold")
-    ax.set_xlabel("Offered Load (Packets/Sec)")
-    ax.set_ylabel("Packet Loss (%)")
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "fig_4_packet_loss.png"), dpi=300)
-    print("Generated Fig 4: Packet Loss")
-
-
-def plot_cdf_comparison(df, output_dir):
-    """
-    Fig 5: Automatic Deep Dive CDF
-    Finds the highest rate shared by Baseline and Threaded(B=32)
-    and plots their tail latency distribution.
-    """
-    steady = df[df["mode"] == "steady"]
-
-    base_rates = set(steady[steady["receiver"] == "baseline"]["rate_pps"])
-
-    threaded_subset = steady[steady["receiver"].str.contains("threaded")]
-    if threaded_subset.empty:
-        return
-
-    champion_batch = 32
-    if champion_batch not in threaded_subset["batch_size"].values:
-        champion_batch = threaded_subset["batch_size"].max()
-
-    thread_rates = set(
-        threaded_subset[threaded_subset["batch_size"] == champion_batch]["rate_pps"]
-    )
-
-    common = sorted(list(base_rates.intersection(thread_rates)))
-    if not common:
-        print("No common rate found for CDF comparison.")
-        return
-
-    target_rate = common[-1]
-    print(
-        f"Generating CDF for Rate: {target_rate} PPS (Comparing Baseline vs Threaded B={champion_batch})"
-    )
-
-    row_base = steady[
-        (steady["receiver"] == "baseline") & (steady["rate_pps"] == target_rate)
-    ].iloc[0]
-    row_thread = steady[
-        (steady["receiver"].str.contains("threaded"))
-        & (steady["batch_size"] == champion_batch)
-        & (steady["rate_pps"] == target_rate)
-    ].iloc[0]
-
-    def get_path(row):
-        fname = f"{row['campaign']}_{row['mode']}_{row['rate_pps']}pps_b{row['burst_size']}_batch{row['batch_size']}.bin"
-        return os.path.join(output_dir, row["campaign"], fname)
-
-    files_to_load = {
-        "Baseline": get_path(row_base),
-        f"Threaded (B={champion_batch})": get_path(row_thread),
-    }
-
-    combined_df = []
-    for label, filepath in files_to_load.items():
-        if not os.path.exists(filepath):
-            print(f"  Missing binary: {filepath}")
-            continue
-
-        raw_df = load_binary_file(filepath)
-        if raw_df.empty:
-            continue
-
-        clean_df, _ = remove_clock_drift(raw_df)
-
-        temp = pd.DataFrame(
-            {"latency_us": clean_df["latency_corrected_us"], "Variant": label}
-        )
-        combined_df.append(temp)
-
-    if not combined_df:
-        return
-
-    full_data = pd.concat(combined_df)
-
-    plt.figure(figsize=(10, 6))
-    ax = sns.ecdfplot(data=full_data, x="latency_us", hue="Variant", linewidth=2)
-
-    ax.set_title(f"CDF: Tail Latency @ {target_rate} PPS", fontweight="bold")
-    ax.set_xlabel("Latency (µs)")
-    ax.set_ylabel("Cumulative Probability")
-
-    limit = full_data["latency_us"].quantile(0.999)
-    ax.set_xlim(0, limit * 1.2)
-
-    plt.grid(True, which="minor", linestyle=":", linewidth=0.5)
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "fig_5_cdf_comparison.png"), dpi=300)
-    print("Generated Fig 5: CDF Comparison")
-
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("summary_csv", help="Path to master_summary.csv")
-    args = parser.parse_args()
-
-    if not os.path.exists(args.summary_csv):
-        print("Summary CSV not found.")
-        return
-
-    df = pd.read_csv(args.summary_csv)
-    output_dir = os.path.dirname(args.summary_csv)
-
-    print(f"Loaded {len(df)} runs. Generating figures...")
-
-    plot_steady_state_curve(df, output_dir)
-    plot_burst_impact(df, output_dir)
-    plot_jitter_and_loss(df, output_dir)
-    plot_packet_loss(df, output_dir)
-    plot_cdf_comparison(df, output_dir)
+def figure_profiles(profile: pd.DataFrame, output: Path) -> Path:
+    metrics = [
+        ("cycles_per_packet", "Cycles / packet"),
+        ("instructions_per_packet", "Instructions / packet"),
+        ("cache_misses_per_packet", "Cache misses / packet"),
+        ("receive_syscalls_per_packet", "Receive syscalls / packet"),
+        ("context_switches_per_packet", "Context switches / packet"),
+    ]
+    profile = profile.copy()
+    profile["configuration"] = profile.apply(label, axis=1)
+    order = list(dict.fromkeys(profile.configuration))
+    fig, axes = plt.subplots(1, 5, figsize=(16, 4))
+    for axis, (column, title) in zip(axes, metrics):
+        values = [profile.loc[profile.configuration == config, column].dropna() for config in order]
+        axis.boxplot(values, tick_labels=order, showfliers=True)
+        axis.set_title(title)
+        axis.tick_params(axis="x", rotation=45, labelsize=8)
+        axis.grid(axis="y", alpha=.25)
+        if any(value.empty for value in values):
+            axis.text(.5, .95, "unavailable events retained as NA", transform=axis.transAxes,
+                      ha="center", va="top", fontsize=7)
+    fig.tight_layout()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=180)
+    plt.close(fig)
+    return output
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("per_run_csv", type=Path)
+    parser.add_argument("--profile-csv", type=Path)
+    parser.add_argument("--output-dir", type=Path)
+    args = parser.parse_args()
+    output_dir = args.output_dir or args.per_run_csv.parent
+    data = pd.read_csv(args.per_run_csv)
+    if not (data.topology == "distributed_ethernet").any():
+        print("No recruiter-facing figures generated from loopback-only data.")
+    else:
+        print(figure_throughput(data, output_dir / "figure1_throughput_loss.png"))
+        profile_path = args.profile_csv or args.per_run_csv.parent / "profile_summary.csv"
+        if not profile_path.exists():
+            raise FileNotFoundError("profile_summary.csv is required for the second figure")
+        print(figure_profiles(pd.read_csv(profile_path), output_dir / "figure2_profile_mechanism.png"))

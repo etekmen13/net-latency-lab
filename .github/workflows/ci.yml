@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libgtest-dev python3-venv
+      - name: Configure and build
+        run: cmake --preset dev && cmake --build --preset dev -j2
+      - name: Native tests
+        run: ctest --preset dev
+      - name: Python tests
+        run: python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/python -m pytest -q
+
+  tsan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build libgtest-dev
+      - name: Build ThreadSanitizer preset
+        run: cmake --preset tsan && cmake --build --preset tsan -j2
+      - name: SPSC tests under ThreadSanitizer
+        run: ctest --preset tsan

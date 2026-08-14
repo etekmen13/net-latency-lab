@@ -1,4 +1,7 @@
 analysis/data/
+results/sessions/
+results/raw/
+*.perf.data
 build/
 .cache/
 .venv/
@@ -31,3 +34,4 @@ compile_commands.json
 .DS_Store
 .vscode/
 .idea/
+TODO.txt

@@ -1,0 +1,76 @@
+# Edit only the two management_host values and benchmark_commit after freezing
+# the measurement commit. The direct-link addresses and protocol are fixed.
+global:
+  topology: distributed_ethernet
+  benchmark_commit: SET_AFTER_FREEZING_COMMIT
+  remote_project_root: /home/pi/net-latency-lab
+  local_project_root: .
+  local_data_dir: results/sessions
+  user: pi
+  metadata_collection: true
+  tuning_state: pi4-predeclared-v1
+  nodes:
+    receiver:
+      management_host: 192.168.1.10
+      benchmark_ip: 192.168.50.2
+      interface: eth0
+    sender:
+      management_host: 192.168.1.11
+      benchmark_ip: 192.168.50.1
+      interface: eth0
+  runtime:
+    repetitions: 5
+    shuffle_seed: 477
+    port: 49200
+    receiver_startup_seconds: 0.5
+    post_sender_drain_seconds: 1.0
+    shutdown_timeout_seconds: 30
+    receive_buffer_bytes: 4194304
+    send_buffer_bytes: 4194304
+    receiver_cpu: 3
+    worker_cpu: 2
+    sender_cpu: 3
+    scheduler: fifo
+    priority: 90
+    privilege_prefix: []
+    build_preset: pi4-release
+    build_subdir: pi4-release
+
+benchmarks:
+  - name: sender_qualification
+    campaign: sender_qualification
+    repetitions: 3
+    receiver: {binary: receiver_threaded, batch_sizes: [64], work_ns: 0, sample_every: 0}
+    sender:
+      {mode: steady, duration_seconds: 10, rates_pps: [100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 950000], burst_sizes: [1], payload_size: 64}
+
+  - name: raw_baseline
+    campaign: raw
+    uses_qualified_rates: true
+    receiver: {binary: receiver_baseline, batch_sizes: [1], work_ns: 0, sample_every: 0}
+    sender: &raw_sender
+      {mode: steady, duration_seconds: 30, rates_pps: [100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 950000], burst_sizes: [1], payload_size: 64}
+  - name: raw_batched
+    campaign: raw
+    uses_qualified_rates: true
+    receiver: {binary: receiver_batched, batch_sizes: [1, 4, 8, 16, 32, 64], work_ns: 0, sample_every: 0}
+    sender: *raw_sender
+  - name: raw_threaded
+    campaign: raw
+    uses_qualified_rates: true
+    receiver: {binary: receiver_threaded, batch_sizes: [1, 4, 8, 16, 32, 64], work_ns: 0, sample_every: 0}
+    sender: *raw_sender
+
+  - name: work_baseline
+    campaign: workload_10us
+    receiver: {binary: receiver_baseline, batch_sizes: [1], work_ns: 10000, sample_every: 100}
+    sender: &work_sender
+      {mode: steady, duration_seconds: 30, rates_pps: [10000, 25000, 50000, 75000, 100000, 125000, 150000, 200000], burst_sizes: [1], payload_size: 64}
+  - name: work_batched
+    campaign: workload_10us
+    receiver: {binary: receiver_batched, batch_sizes: [1, 4, 8, 16, 32, 64], work_ns: 10000, sample_every: 100}
+    sender: *work_sender
+  - name: work_threaded
+    campaign: workload_10us
+    receiver: {binary: receiver_threaded, batch_sizes: [1, 4, 8, 16, 32, 64], work_ns: 10000, sample_every: 100}
+    sender: *work_sender

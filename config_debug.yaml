@@ -1,35 +1,41 @@
 global:
-  remote_project_root: "/root/net-latency-lab"
+  topology: local_loopback
+  remote_project_root: "."
   local_project_root: "."
-  user: "root"
-  local_data_dir: "analysis/data"
+  local_data_dir: "results/sessions"
+  user: "unused-in-local-mode"
+  metadata_collection: true
+  tuning_state: "not_applied"
   nodes:
-    receiver_ip: "192.168.1.10" 
-    sender_ip: "192.168.1.11"
-
+    receiver: {management_host: "127.0.0.1", benchmark_ip: "127.0.0.1", interface: "lo"}
+    sender: {management_host: "127.0.0.1", benchmark_ip: "127.0.0.1"}
+  runtime:
+    repetitions: 1
+    port: 49200
+    receiver_startup_seconds: 0.1
+    shutdown_timeout_seconds: 5
+    post_sender_drain_seconds: 0.05
+    shuffle_seed: 477
+    receive_buffer_bytes: 0
+    send_buffer_bytes: 0
+    receiver_cpu: null
+    worker_cpu: null
+    sender_cpu: null
+    scheduler: "other"
+    priority: 0
+    privilege_prefix: []
+    build_preset: dev
+    build_subdir: dev
 benchmarks:
-  # Benchmark 1: Throughput Saturation
-  # Sweeps from 1k to 100k PPS to find where the baseline breaks
-  - name: "baseline"
+  - name: baseline_debug
     enabled: true
-    receiver:
-      binary: "receiver_baseline"
-      cpu_affinity: 3
-      processing_time_ns: 10000
-    sender:
-      mode: "steady"
-      duration_sec: 1
-      rates_pps: [1000, 2500, 5000, 7500, 10000, 25000, 50000, 75000, 100000]
-      payload_size: 64
-  - name: "threaded"
+    receiver: {binary: receiver_baseline, batch_sizes: [1], work_ns: 0, sample_every: 1}
+    sender: {mode: steady, duration_seconds: 0.2, rates_pps: [1000], burst_sizes: [1], payload_size: 64}
+  - name: batched_debug
     enabled: true
-    receiver:
-      binary: "receiver_threaded"
-      cpu_affinity: 3
-      batch_size: [1,16,32]  
-      processing_time_ns: 10000
-    sender:
-      mode: "steady"
-      duration_sec: 1
-      rates_pps: [1000, 2500, 5000, 7500, 10000, 25000, 50000, 75000, 100000]
-      payload_size: 64
+    receiver: {binary: receiver_batched, batch_sizes: [8], work_ns: 0, sample_every: 1}
+    sender: {mode: steady, duration_seconds: 0.2, rates_pps: [1000], burst_sizes: [1], payload_size: 64}
+  - name: threaded_debug
+    enabled: true
+    receiver: {binary: receiver_threaded, batch_sizes: [8], work_ns: 10000, sample_every: 1}
+    sender: {mode: steady, duration_seconds: 0.2, rates_pps: [1000], burst_sizes: [1], payload_size: 64}

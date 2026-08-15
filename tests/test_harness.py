@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import signal
 import struct
 import subprocess
@@ -93,10 +94,11 @@ def test_remote_process_tracks_and_signals_child_pid_before_reading_status():
     assert handle.pid == 4200
     assert handle.monitor_pid == 4100
     assert "/tmp/run.log.pid" in commands[0]
+    assert "setsid /project/receiver --flag" in commands[0]
     assert "trap " not in commands[0]
 
     remote.signal_process(handle, signal.SIGINT)
-    assert commands[1] == "kill -INT 4200 2>/dev/null || true"
+    assert commands[1] == "kill -INT -4200 2>/dev/null || true"
     assert remote.wait_process(handle, 1.0) == 0
     assert commands[2].startswith("if test -f /tmp/run.log.status;")
     assert "kill -0 4100" in commands[2]
@@ -120,6 +122,92 @@ def test_remote_process_wrapper_records_signaled_child_exit(tmp_path):
         time.sleep(0.05)
         remote.signal_process(handle, signal.SIGINT)
         assert remote.wait_process(handle, 2.0) == 0
+    finally:
+        remote.signal_process(handle, signal.SIGTERM)
+        remote.remove_files([log_path, f"{log_path}.status", f"{log_path}.pid"])
+
+
+def process_tree_command(tmp_path):
+    child_ready = tmp_path / "child.ready"
+    child_interrupted = tmp_path / "child.interrupted"
+    child_pid = tmp_path / "child.pid"
+    child_code = (
+        "import pathlib,signal,sys,time; "
+        "ready=pathlib.Path(sys.argv[1]); interrupted=pathlib.Path(sys.argv[2]); "
+        "signal.signal(signal.SIGINT, lambda *_: (interrupted.write_text('yes'), sys.exit(0))); "
+        "ready.write_text('yes'); time.sleep(60)"
+    )
+    parent_code = (
+        "import pathlib,signal,subprocess,sys,time; "
+        "child=subprocess.Popen([sys.executable,'-c',sys.argv[1],sys.argv[2],sys.argv[3]]); "
+        "pathlib.Path(sys.argv[4]).write_text(str(child.pid)); "
+        "signal.signal(signal.SIGINT, lambda *_: (child.wait(timeout=2), sys.exit(0))); "
+        "time.sleep(60)"
+    )
+    command = [sys.executable, "-c", parent_code, child_code,
+               str(child_ready), str(child_interrupted), str(child_pid)]
+    return command, child_ready, child_interrupted, child_pid
+
+
+def wait_for_file(path, timeout=2.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if path.is_file():
+            return
+        time.sleep(0.01)
+    raise TimeoutError(f"file was not created: {path}")
+
+
+def assert_pid_exited(pid):
+    with pytest.raises(ProcessLookupError):
+        os.getpgid(pid)
+
+
+def test_local_process_group_shutdown_reaches_descendants(tmp_path):
+    node = LocalNode()
+    command, child_ready, child_interrupted, child_pid_path = process_tree_command(tmp_path)
+    handle = node.start_process(command, str(tmp_path / "local-process.log"))
+    try:
+        assert os.getpgid(handle.pid) == handle.pid
+        wait_for_file(child_ready)
+        child_pid = int(child_pid_path.read_text())
+        assert os.getpgid(child_pid) == handle.pid
+
+        node.signal_process(handle, signal.SIGINT)
+
+        assert node.wait_process(handle, 2.0) == 0
+        assert child_interrupted.read_text() == "yes"
+        assert_pid_exited(child_pid)
+    finally:
+        if handle.process is not None and handle.process.poll() is None:
+            os.killpg(handle.pid, signal.SIGKILL)
+            handle.process.wait()
+
+
+def test_remote_process_group_shutdown_writes_status_and_reaps_descendants(tmp_path):
+    remote = object.__new__(RemoteNode)
+
+    def local_shell_exec(command, timeout=30.0):
+        result = subprocess.run(["sh", "-c", command], check=True,
+                                capture_output=True, text=True, timeout=timeout)
+        return result.stdout.strip()
+
+    remote._exec = local_shell_exec
+    command, child_ready, child_interrupted, child_pid_path = process_tree_command(tmp_path)
+    log_path = str(tmp_path / "remote-tree.log")
+    handle = remote.start_process(command, log_path)
+    try:
+        wait_for_file(child_ready)
+        child_pid = int(child_pid_path.read_text())
+        assert os.getpgid(handle.pid) == handle.pid
+        assert os.getpgid(child_pid) == handle.pid
+
+        remote.signal_process(handle, signal.SIGINT)
+
+        assert remote.wait_process(handle, 2.0) == 0
+        assert Path(f"{log_path}.status").read_text() == "0"
+        assert child_interrupted.read_text() == "yes"
+        assert_pid_exited(child_pid)
     finally:
         remote.signal_process(handle, signal.SIGTERM)
         remote.remove_files([log_path, f"{log_path}.status", f"{log_path}.pid"])

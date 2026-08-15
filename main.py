@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import random
 import re
 import shlex
@@ -116,7 +117,8 @@ class LocalNode(NodeController):
         Path(log_path).parent.mkdir(parents=True, exist_ok=True)
         stream = open(log_path, "w", encoding="utf-8")
         process = subprocess.Popen(list(command), stdout=stream,
-                                   stderr=subprocess.STDOUT, text=True)
+                                   stderr=subprocess.STDOUT, text=True,
+                                   start_new_session=True)
         return ProcessHandle(process.pid, list(command), log_path, process, stream)
 
     def wait_process(self, handle: ProcessHandle, timeout: float) -> int:
@@ -131,7 +133,10 @@ class LocalNode(NodeController):
     def signal_process(self, handle: ProcessHandle, signum: int) -> None:
         assert handle.process is not None
         if handle.process.poll() is None:
-            handle.process.send_signal(signum)
+            try:
+                os.killpg(handle.pid, signum)
+            except ProcessLookupError:
+                pass
 
     def fetch_file(self, source: str, destination: Path) -> None:
         source_path = Path(source)
@@ -171,7 +176,7 @@ class RemoteNode(NodeController):
         status_path = f"{log_path}.status"
         pid_path = f"{log_path}.pid"
         inner = (
-            f"{shlex.join(command)} & child=$!; "
+            f"setsid {shlex.join(command)} & child=$!; "
             f"printf '%s' \"$child\" > {shlex.quote(pid_path)}; "
             "wait \"$child\"; code=$?; "
             f"printf '%s' \"$code\" > {shlex.quote(status_path)}; exit \"$code\"")
@@ -210,7 +215,7 @@ class RemoteNode(NodeController):
 
     def signal_process(self, handle: ProcessHandle, signum: int) -> None:
         name = signal.Signals(signum).name.removeprefix("SIG")
-        self._exec(f"kill -{name} {handle.pid} 2>/dev/null || true")
+        self._exec(f"kill -{name} -{handle.pid} 2>/dev/null || true")
 
     def fetch_file(self, source: str, destination: Path) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)

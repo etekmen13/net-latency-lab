@@ -676,6 +676,20 @@ If a run is invalid, do not delete it or substitute one favorable repetition. Pr
 
 ## 14. Run profiling
 
+Before starting the controller campaign, run the lifecycle smoke locally on the
+receiver Pi (never while a benchmark interval is active):
+
+```bash
+cd /home/dietpi/net-latency-lab
+BUILD_SUBDIR=pi4-release ./scripts/profile_shutdown_smoke.sh
+```
+
+The smoke must print status 0 for both `perf stat` and `perf record`. It rejects
+missing/empty receiver stats, traces, or perf artifacts, requires `perf report`
+to succeed for the record capture, and checks that the wrapper and receiver
+have both exited. The script sends SIGINT only to the PID published by the
+receiver exec shim; it then waits for `perf` to finalize naturally.
+
 Prepare the mechanical profile configuration:
 
 ```bash
@@ -717,6 +731,11 @@ Generate the profile summary:
 ```
 
 Profile runs are explanatory evidence only; do not include them in throughput or latency claims.
+
+For profiled runs, metadata `processes.receiver_pid` is the actual receiver PID
+and `processes.profile_wrapper_pid` is the `perf` PID. Workload PID publication
+and all other process discovery finish before the sender is launched, so the
+timed sender-plus-drain interval remains control-plane silent.
 
 ## 15. Restore both Pis
 

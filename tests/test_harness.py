@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import shutil
 import signal
 import struct
 import subprocess
@@ -15,7 +16,7 @@ import yaml
 
 from main import (counter_deltas, parse_udp_rcvbuf_errors, receiver_command,
                   sender_command, validate_config, run_campaign, ProcessHandle,
-                  LocalNode, NodeController, RemoteNode)
+                  LocalNode, NodeController, RemoteNode, shutdown_process)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -104,6 +105,28 @@ def test_remote_process_tracks_and_signals_child_pid_before_reading_status():
     assert "kill -0 4100" in commands[2]
 
 
+def test_remote_profile_tracks_and_signals_workload_not_process_group():
+    remote = object.__new__(RemoteNode)
+    commands = []
+    responses = iter(["4100 4200 4300", "", "0"])
+
+    def fake_exec(command, timeout=30.0):
+        commands.append(command)
+        return next(responses)
+
+    remote._exec = fake_exec
+    command = ["perf", "record", "--", "/project/receiver_baseline", "--flag"]
+    handle = remote.start_process(command, "/tmp/profile.log", workload_index=3)
+    assert handle.wrapper_pid == 4200
+    assert handle.workload_pid == 4300
+    assert "/tmp/profile.log.workload.pid" in commands[0]
+    assert "nll-workload" in commands[0]
+
+    remote.signal_process(handle, signal.SIGINT)
+    assert commands[1] == "kill -INT 4300 2>/dev/null || true"
+    assert remote.wait_process(handle, 1.0) == 0
+
+
 def test_remote_process_wrapper_records_signaled_child_exit(tmp_path):
     remote = object.__new__(RemoteNode)
 
@@ -161,6 +184,140 @@ def wait_for_file(path, timeout=2.0):
 def assert_pid_exited(pid):
     with pytest.raises(ProcessLookupError):
         os.getpgid(pid)
+
+
+def fake_perf_command(tmp_path, mode):
+    fake_perf = tmp_path / "perf"
+    wrapper_interrupted = tmp_path / f"{mode}.wrapper-interrupted"
+    artifact = tmp_path / (f"{mode}.data" if mode == "record" else f"{mode}.csv")
+    stats = tmp_path / f"{mode}.receiver.json"
+    ready = tmp_path / f"{mode}.receiver.ready"
+    fake_perf.write_text(
+        "#!/usr/bin/env python3\n"
+        "import pathlib, signal, subprocess, sys\n"
+        "separator = sys.argv.index('--')\n"
+        "artifact = pathlib.Path(sys.argv[sys.argv.index('-o') + 1])\n"
+        "marker = pathlib.Path(sys.argv[sys.argv.index('--wrapper-marker') + 1])\n"
+        "child = subprocess.Popen(sys.argv[separator + 1:])\n"
+        "def interrupted(*_):\n"
+        "    marker.write_text('wrapper received SIGINT')\n"
+        "    child.terminate()\n"
+        "signal.signal(signal.SIGINT, interrupted)\n"
+        "status = child.wait()\n"
+        "artifact.write_bytes(b'finalized profile artifact')\n"
+        "sys.exit(status if status >= 0 else 128 - status)\n",
+        encoding="utf-8")
+    fake_perf.chmod(0o755)
+    receiver_code = (
+        "import pathlib,signal,sys,time; stats=pathlib.Path(sys.argv[1]); "
+        "signal.signal(signal.SIGINT, lambda *_: "
+        "(time.sleep(.1), stats.write_text('{\\\"status\\\": \\\"clean\\\"}'), sys.exit(0))); "
+        "pathlib.Path(sys.argv[2]).write_text('ready'); time.sleep(60)"
+    )
+    command = [str(fake_perf), mode, "-o", str(artifact),
+               "--wrapper-marker", str(wrapper_interrupted), "--",
+               sys.executable, "-c", receiver_code, str(stats), str(ready)]
+    return command, 7, wrapper_interrupted, artifact, stats, ready
+
+
+@pytest.mark.parametrize("node_kind", ["local", "remote"])
+@pytest.mark.parametrize("mode", ["stat", "record"])
+def test_profile_shutdown_targets_receiver_and_finalizes_wrapper(
+        tmp_path, node_kind, mode):
+    if node_kind == "local":
+        node = LocalNode()
+    else:
+        node = object.__new__(RemoteNode)
+
+        def local_shell_exec(command, timeout=30.0):
+            result = subprocess.run(["sh", "-c", command], check=True,
+                                    capture_output=True, text=True, timeout=timeout)
+            return result.stdout.strip()
+
+        node._exec = local_shell_exec
+    command, workload_index, wrapper_interrupted, artifact, stats, ready = fake_perf_command(
+        tmp_path, mode)
+    log_path = str(tmp_path / f"{node_kind}-{mode}.log")
+    handle = node.start_process(command, log_path, workload_index=workload_index)
+    try:
+        assert handle.wrapper_pid != handle.workload_pid
+        wait_for_file(ready)
+        status = shutdown_process(node, handle, 2.0)
+        assert status == 0
+        assert json.loads(stats.read_text()) == {"status": "clean"}
+        assert artifact.stat().st_size > 0
+        assert not wrapper_interrupted.exists()
+        assert not node.process_exists(handle.wrapper_pid)
+        assert not node.process_exists(handle.workload_pid)
+        if node_kind == "remote":
+            assert Path(f"{log_path}.status").read_text() == "0"
+    finally:
+        if node.process_exists(handle.wrapper_pid):
+            node.signal_wrapper(handle, signal.SIGKILL)
+        for suffix in ("", ".status", ".pid", ".workload.pid"):
+            Path(f"{log_path}{suffix}").unlink(missing_ok=True)
+
+
+@pytest.mark.skipif(shutil.which("perf") is None, reason="perf is unavailable")
+@pytest.mark.parametrize("mode", ["stat", "record"])
+def test_real_perf_profile_shutdown_when_kernel_permissions_allow(tmp_path, mode):
+    perf = shutil.which("perf")
+    assert perf is not None
+    artifact = tmp_path / ("perf.data" if mode == "record" else "perf.csv")
+    stats = tmp_path / "receiver.json"
+    receiver_code = """
+import json
+import pathlib
+import signal
+import sys
+
+stats = pathlib.Path(sys.argv[1])
+def stop(*_):
+    stats.write_text(json.dumps({"status": "clean"}))
+    raise SystemExit(0)
+signal.signal(signal.SIGINT, stop)
+value = 1
+while True:
+    value = (value * 1103515245 + 12345) & 0x7fffffff
+"""
+    if mode == "stat":
+        command = [perf, "stat", "-x,", "-o", str(artifact), "-e", "task-clock",
+                   "--", sys.executable, "-c", receiver_code, str(stats)]
+    else:
+        command = [perf, "record", "-o", str(artifact), "-F", "99", "-g",
+                   "--call-graph", "fp", "--", sys.executable, "-c", receiver_code,
+                   str(stats)]
+    workload_index = command.index(sys.executable)
+    log_path = tmp_path / f"real-perf-{mode}.log"
+    node = LocalNode()
+    try:
+        handle = node.start_process(command, str(log_path), workload_index=workload_index)
+    except RuntimeError:
+        log = log_path.read_text(errors="replace") if log_path.exists() else ""
+        if "permission" in log.lower() or "not supported" in log.lower():
+            pytest.skip(log.strip() or "perf events are not permitted")
+        raise
+    try:
+        time.sleep(0.1)
+        status = shutdown_process(node, handle, 5.0)
+        log = log_path.read_text(errors="replace") if log_path.exists() else ""
+        if status != 0 and ("permission" in log.lower() or "not supported" in log.lower()):
+            pytest.skip(log.strip())
+        assert status == 0, log
+        assert json.loads(stats.read_text()) == {"status": "clean"}
+        assert artifact.stat().st_size > 0
+        if mode == "record":
+            report = subprocess.run([perf, "report", "--stdio", "-i", str(artifact)],
+                                    capture_output=True, text=True, timeout=30)
+            assert report.returncode == 0, report.stderr
+            assert (report.stdout + report.stderr).strip()
+        assert not node.process_exists(handle.wrapper_pid)
+        assert not node.process_exists(handle.workload_pid)
+    finally:
+        if node.process_exists(handle.workload_pid):
+            os.kill(handle.workload_pid, signal.SIGKILL)
+        if node.process_exists(handle.wrapper_pid):
+            os.kill(handle.wrapper_pid, signal.SIGKILL)
 
 
 def test_local_process_group_shutdown_reaches_descendants(tmp_path):
@@ -227,21 +384,39 @@ class FakeNode(NodeController):
         self.metadata_root = metadata_root
         self.cleanup_requests = []
         self.metadata_existed_at_cleanup = []
+        self.wrapper_signals = []
+        self.exited_pids = set()
 
     def run(self, command, timeout=30.0):
-        return ""
+        return "mock perf report" if command[:2] == ["perf", "report"] else ""
 
-    def start_process(self, command, log_path):
-        handle = ProcessHandle(self.next_pid, list(command), log_path)
+    def start_process(self, command, log_path, workload_index=None):
+        workload_pid = self.next_pid + 10_000 if workload_index is not None else None
+        handle = ProcessHandle(self.next_pid, list(command), log_path,
+                               workload_pid=workload_pid)
         self.next_pid += 1; self.handles.append(handle); return handle
 
     def wait_process(self, handle, timeout):
+        self.exited_pids.add(handle.wrapper_pid)
+        if handle.workload_pid is not None:
+            self.exited_pids.add(handle.workload_pid)
         if any("receiver_" in part for part in handle.command):
             return self.receiver_status
         return self.sender_status
 
     def signal_process(self, handle, signum):
-        self.signals.append((handle.pid, signum))
+        self.signals.append((handle.shutdown_target_pid, signum))
+
+    def signal_wrapper(self, handle, signum):
+        self.wrapper_signals.append((handle.wrapper_pid, signum))
+
+    def process_exists(self, pid):
+        known = any(pid in {handle.wrapper_pid, handle.workload_pid}
+                    for handle in self.handles)
+        return known and pid not in self.exited_pids
+
+    def wait_pid_exit(self, pid, timeout):
+        return not self.process_exists(pid)
 
     def snapshot_counters(self, interface):
         return {"udp_rcvbuf_errors": {"value": 10, "error": None},
@@ -364,11 +539,112 @@ def test_profile_artifact_is_cleaned_after_local_metadata(monkeypatch, tmp_path,
     config_path = tmp_path / "config.yaml"
     config_path.write_text(yaml.safe_dump(config))
 
-    run_campaign(config, config_path, skip_build=True)
+    session = run_campaign(config, config_path, skip_build=True)
 
     assert len(fake.cleanup_requests) == 2
     assert any(path.endswith(profile_suffix) for path in fake.cleanup_requests[0])
     assert all(fake.metadata_existed_at_cleanup)
+    metadata = json.loads(next(session.glob("**/*_meta.json")).read_text())
+    receiver_handle = next(handle for handle in fake.handles
+                           if any("receiver_" in part for part in handle.command))
+    assert metadata["processes"]["receiver_pid"] == receiver_handle.workload_pid
+    assert metadata["processes"]["profile_wrapper_pid"] == receiver_handle.wrapper_pid
+    assert (receiver_handle.workload_pid, signal.SIGINT) in fake.signals
+
+
+def test_profile_finally_cleanup_signals_receiver_not_wrapper(monkeypatch, tmp_path):
+    fake = FakeNode(sender_status=1)
+    monkeypatch.setattr("main.get_node", lambda host, user: fake)
+    monkeypatch.setattr("main.time.sleep", lambda seconds: None)
+    config = one_benchmark_config(tmp_path)
+    config["global"]["runtime"]["repetitions"] = 1
+    config["benchmarks"][0]["profile"] = "record"
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml.safe_dump(config))
+
+    with pytest.raises(RuntimeError, match="Sender failed"):
+        run_campaign(config, config_path, skip_build=True)
+
+    receiver_handle = next(handle for handle in fake.handles
+                           if any("receiver_" in part for part in handle.command))
+    assert fake.signals == [(receiver_handle.workload_pid, signal.SIGINT)]
+    assert fake.wrapper_signals == []
+
+
+def test_profile_shutdown_escalates_workload_before_wrapper():
+    class StuckNode:
+        def __init__(self):
+            self.signals = []
+            self.wrapper_signals = []
+            self.waits = 0
+            self.workload_waits = 0
+
+        def signal_process(self, handle, signum):
+            self.signals.append((handle.shutdown_target_pid, signum))
+
+        def signal_wrapper(self, handle, signum):
+            self.wrapper_signals.append((handle.wrapper_pid, signum))
+
+        def wait_process(self, handle, timeout):
+            self.waits += 1
+            if self.waits < 4:
+                raise subprocess.TimeoutExpired(handle.command, timeout)
+            return 143
+
+        def wait_pid_exit(self, pid, timeout):
+            self.workload_waits += 1
+            return self.workload_waits >= 3
+
+        def process_exists(self, pid):
+            return False
+
+    node = StuckNode()
+    handle = ProcessHandle(200, ["perf", "record"], "/tmp/profile.log",
+                           workload_pid=201)
+
+    assert shutdown_process(node, handle, 0.1) == 143
+    assert node.signals == [
+        (201, signal.SIGINT),
+        (201, signal.SIGTERM),
+        (201, signal.SIGKILL),
+    ]
+    assert node.wrapper_signals == [(200, signal.SIGTERM)]
+
+
+def test_profile_shutdown_reaps_workload_even_if_wrapper_already_exited():
+    class DetachedWorkloadNode:
+        def __init__(self):
+            self.alive = True
+            self.signals = []
+
+        def signal_process(self, handle, signum):
+            self.signals.append((handle.shutdown_target_pid, signum))
+            if signum == signal.SIGKILL:
+                self.alive = False
+
+        def signal_wrapper(self, handle, signum):
+            raise AssertionError("exited wrapper must not be signaled")
+
+        def wait_process(self, handle, timeout):
+            return 0
+
+        def wait_pid_exit(self, pid, timeout):
+            return not self.alive
+
+        def process_exists(self, pid):
+            return self.alive
+
+    node = DetachedWorkloadNode()
+    handle = ProcessHandle(300, ["perf", "record"], "/tmp/profile.log",
+                           workload_pid=301)
+
+    assert shutdown_process(node, handle, 0.1) == 0
+    assert node.signals == [
+        (301, signal.SIGINT),
+        (301, signal.SIGTERM),
+        (301, signal.SIGKILL),
+    ]
+    assert not node.alive
 
 
 @pytest.mark.parametrize("failure", ["transfer", "parsing"])

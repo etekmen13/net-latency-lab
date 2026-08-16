@@ -92,6 +92,11 @@ one call-graph capture per architecture, and marks unsupported kernel events as
 unavailable. `perf.data` and raw traces stay outside Git; `perf report --stdio`
 extracts and SHA-256 checksums are publishable.
 
+Profile lifecycle validation is available as
+`scripts/profile_shutdown_smoke.sh`. The harness records the actual receiver
+PID separately from the `perf` wrapper PID and signals only the receiver during
+graceful profile shutdown, preserving receiver stats and finalized perf data.
+
 ## Publication boundary
 
 Publication produces one cleaned benchmark CSV, `claim_evidence.csv`, exactly

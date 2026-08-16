@@ -48,6 +48,12 @@ failure, flush timeout, unreadable artifacts, missing required metadata,
 continued application backlog, throttling, negative/unexplained counters, or
 unreconciled sender/UDP/NIC/sequence/SPSC accounting.
 
+Profile wrappers and receiver workloads have distinct recorded PIDs. Shutdown
+signals the receiver alone and waits for its clean exit before `perf` finalizes;
+the wrapper is never group-signaled during normal profile shutdown. Empty
+receiver statistics or profiling artifacts, a failed `perf report`, a nonzero
+wrapper status, or a surviving wrapper/workload invalidates the run.
+
 ## Sustainable rule and metrics
 
 A configuration sustains a requested rate only when all five repetitions have

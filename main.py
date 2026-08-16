@@ -50,12 +50,63 @@ def format_duration(seconds: float) -> str:
 
 @dataclass
 class ProcessHandle:
+    # pid is the top-level command (and process-group leader).  For a profiled
+    # receiver this is the perf wrapper; workload_pid is the receiver itself.
     pid: int
     command: list[str]
     log_path: str
     process: subprocess.Popen[str] | None = None
     log_stream: Any = None
     monitor_pid: int | None = None
+    workload_pid: int | None = None
+
+    @property
+    def wrapper_pid(self) -> int:
+        return self.pid
+
+    @property
+    def shutdown_target_pid(self) -> int:
+        return self.workload_pid if self.workload_pid is not None else self.pid
+
+
+def instrument_workload(command: Sequence[str], workload_index: int | None,
+                        workload_pid_path: str | None) -> list[str]:
+    """Insert a PID-writing exec shim immediately before a wrapped workload."""
+    result = list(command)
+    if workload_index is None:
+        if workload_pid_path is not None:
+            raise ValueError("A workload PID path requires a workload index")
+        return result
+    if workload_pid_path is None or not 0 <= workload_index < len(result):
+        raise ValueError("Invalid tracked workload specification")
+    temporary_path = f"{workload_pid_path}.tmp"
+    shim = (
+        f"printf '%s' \"$$\" > {shlex.quote(temporary_path)}; "
+        f"mv -f -- {shlex.quote(temporary_path)} {shlex.quote(workload_pid_path)}; "
+        'exec "$@"')
+    return [*result[:workload_index], "sh", "-c", shim, "nll-workload",
+            *result[workload_index:]]
+
+
+def wait_for_local_pid_file(path: Path, process: subprocess.Popen[str],
+                            timeout: float) -> int:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            value = path.read_text(encoding="utf-8").strip()
+            if value:
+                pid = int(value)
+                if pid <= 0:
+                    raise ValueError
+                return pid
+        except (FileNotFoundError, ValueError):
+            pass
+        status = process.poll()
+        if status is not None:
+            raise RuntimeError(
+                f"Profile wrapper exited with status {status} before publishing its workload PID")
+        time.sleep(0.01)
+    raise subprocess.TimeoutExpired(process.args, timeout)
 
 
 @dataclass(frozen=True)
@@ -73,7 +124,8 @@ class NodeController:
     def run(self, command: Sequence[str], timeout: float = 30.0) -> str:
         raise NotImplementedError
 
-    def start_process(self, command: Sequence[str], log_path: str) -> ProcessHandle:
+    def start_process(self, command: Sequence[str], log_path: str,
+                      workload_index: int | None = None) -> ProcessHandle:
         raise NotImplementedError
 
     def wait_process(self, handle: ProcessHandle, timeout: float) -> int:
@@ -81,6 +133,20 @@ class NodeController:
 
     def signal_process(self, handle: ProcessHandle, signum: int) -> None:
         raise NotImplementedError
+
+    def signal_wrapper(self, handle: ProcessHandle, signum: int) -> None:
+        raise NotImplementedError
+
+    def process_exists(self, pid: int) -> bool:
+        raise NotImplementedError
+
+    def wait_pid_exit(self, pid: int, timeout: float) -> bool:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if not self.process_exists(pid):
+                return True
+            time.sleep(0.05)
+        return not self.process_exists(pid)
 
     def fetch_file(self, source: str, destination: Path) -> None:
         raise NotImplementedError
@@ -113,13 +179,32 @@ class LocalNode(NodeController):
                                 text=True, timeout=timeout)
         return result.stdout.strip()
 
-    def start_process(self, command: Sequence[str], log_path: str) -> ProcessHandle:
+    def start_process(self, command: Sequence[str], log_path: str,
+                      workload_index: int | None = None) -> ProcessHandle:
         Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+        workload_pid_path = f"{log_path}.workload.pid" if workload_index is not None else None
+        actual_command = instrument_workload(command, workload_index, workload_pid_path)
+        if workload_pid_path is not None:
+            Path(workload_pid_path).unlink(missing_ok=True)
         stream = open(log_path, "w", encoding="utf-8")
-        process = subprocess.Popen(list(command), stdout=stream,
+        process = subprocess.Popen(actual_command, stdout=stream,
                                    stderr=subprocess.STDOUT, text=True,
                                    start_new_session=True)
-        return ProcessHandle(process.pid, list(command), log_path, process, stream)
+        workload_pid = None
+        if workload_pid_path is not None:
+            try:
+                workload_pid = wait_for_local_pid_file(
+                    Path(workload_pid_path), process, timeout=10.0)
+            except Exception:
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                process.wait(timeout=2.0)
+                stream.close()
+                raise
+        return ProcessHandle(process.pid, list(command), log_path, process, stream,
+                             workload_pid=workload_pid)
 
     def wait_process(self, handle: ProcessHandle, timeout: float) -> int:
         assert handle.process is not None
@@ -132,11 +217,31 @@ class LocalNode(NodeController):
 
     def signal_process(self, handle: ProcessHandle, signum: int) -> None:
         assert handle.process is not None
+        try:
+            if handle.workload_pid is not None:
+                # The wrapper may have failed while leaving its workload alive.
+                os.kill(handle.workload_pid, signum)
+            elif handle.process.poll() is None:
+                os.killpg(handle.pid, signum)
+        except ProcessLookupError:
+            pass
+
+    def signal_wrapper(self, handle: ProcessHandle, signum: int) -> None:
+        assert handle.process is not None
         if handle.process.poll() is None:
             try:
-                os.killpg(handle.pid, signum)
+                os.kill(handle.wrapper_pid, signum)
             except ProcessLookupError:
                 pass
+
+    def process_exists(self, pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
 
     def fetch_file(self, source: str, destination: Path) -> None:
         source_path = Path(source)
@@ -172,26 +277,38 @@ class RemoteNode(NodeController):
     def run(self, command: Sequence[str], timeout: float = 30.0) -> str:
         return self._exec(shlex.join(command), timeout)
 
-    def start_process(self, command: Sequence[str], log_path: str) -> ProcessHandle:
+    def start_process(self, command: Sequence[str], log_path: str,
+                      workload_index: int | None = None) -> ProcessHandle:
         status_path = f"{log_path}.status"
         pid_path = f"{log_path}.pid"
+        workload_pid_path = f"{log_path}.workload.pid" if workload_index is not None else None
+        actual_command = instrument_workload(command, workload_index, workload_pid_path)
         inner = (
-            f"setsid {shlex.join(command)} & child=$!; "
+            f"setsid {shlex.join(actual_command)} & child=$!; "
             f"printf '%s' \"$child\" > {shlex.quote(pid_path)}; "
             "wait \"$child\"; code=$?; "
             f"printf '%s' \"$code\" > {shlex.quote(status_path)}; exit \"$code\"")
+        ready_path = workload_pid_path or pid_path
         launch = (f"nohup sh -c {shlex.quote(inner)} > {shlex.quote(log_path)} "
                   f"2>&1 < /dev/null & monitor=$!; "
-                  f"while test ! -s {shlex.quote(pid_path)}; do "
+                  f"while test ! -s {shlex.quote(ready_path)}; do "
+                  f"if test -f {shlex.quote(status_path)}; then "
+                  f"code=$(cat {shlex.quote(status_path)}); wait \"$monitor\" 2>/dev/null || true; "
+                  "exit \"$code\"; fi; "
                   "if ! kill -0 \"$monitor\" 2>/dev/null; then wait \"$monitor\"; exit $?; fi; "
                   "sleep 0.01; done; "
-                  f"printf '%s %s\n' \"$monitor\" \"$(cat {shlex.quote(pid_path)})\"")
+                  f"printf '%s %s' \"$monitor\" \"$(cat {shlex.quote(pid_path)})\"" +
+                  (f"; printf ' %s' \"$(cat {shlex.quote(workload_pid_path)})\""
+                   if workload_pid_path is not None else "") +
+                  "; printf '\n'")
         output = self._exec(launch).split()
-        if len(output) != 2:
+        expected_pids = 3 if workload_pid_path is not None else 2
+        if len(output) != expected_pids:
             raise RuntimeError(f"Remote process launch returned invalid PIDs: {' '.join(output)}")
-        monitor_pid, child_pid = map(int, output)
+        monitor_pid, child_pid = map(int, output[:2])
+        workload_pid = int(output[2]) if workload_pid_path is not None else None
         return ProcessHandle(child_pid, list(command), log_path,
-                             monitor_pid=monitor_pid)
+                             monitor_pid=monitor_pid, workload_pid=workload_pid)
 
     def wait_process(self, handle: ProcessHandle, timeout: float) -> int:
         # This is invoked only after the orchestrator's no-control-traffic timed
@@ -215,7 +332,17 @@ class RemoteNode(NodeController):
 
     def signal_process(self, handle: ProcessHandle, signum: int) -> None:
         name = signal.Signals(signum).name.removeprefix("SIG")
-        self._exec(f"kill -{name} -{handle.pid} 2>/dev/null || true")
+        target = (str(handle.workload_pid) if handle.workload_pid is not None
+                  else f"-{handle.pid}")
+        self._exec(f"kill -{name} {target} 2>/dev/null || true")
+
+    def signal_wrapper(self, handle: ProcessHandle, signum: int) -> None:
+        name = signal.Signals(signum).name.removeprefix("SIG")
+        self._exec(f"kill -{name} {handle.wrapper_pid} 2>/dev/null || true")
+
+    def process_exists(self, pid: int) -> bool:
+        return self._exec(
+            f"if kill -0 {pid} 2>/dev/null; then echo yes; else echo no; fi") == "yes"
 
     def fetch_file(self, source: str, destination: Path) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -228,6 +355,65 @@ class RemoteNode(NodeController):
 
     def close(self) -> None:
         self.client.close()
+
+
+def shutdown_process(node: NodeController, handle: ProcessHandle,
+                     timeout: float) -> int:
+    """Stop a process, targeting a tracked workload before its wrapper.
+
+    Direct commands retain process-group signaling.  Wrapped workloads receive
+    signals by PID, allowing their wrapper to observe and finalize naturally.
+    """
+    escalation_timeout = max(0.1, min(timeout, 2.0))
+    stages = [
+        (node.signal_process, signal.SIGINT, timeout),
+        (node.signal_process, signal.SIGTERM, escalation_timeout),
+        (node.signal_process, signal.SIGKILL, escalation_timeout),
+    ]
+    last_timeout: subprocess.TimeoutExpired | None = None
+    for send_signal, signum, wait_timeout in stages:
+        send_signal(handle, signum)
+        status: int | None = None
+        try:
+            status = node.wait_process(handle, wait_timeout)
+        except subprocess.TimeoutExpired as exc:
+            last_timeout = exc
+        if handle.workload_pid is not None:
+            workload_exited = node.wait_pid_exit(
+                handle.workload_pid, escalation_timeout)
+            if status is not None and workload_exited:
+                return status
+            if not workload_exited:
+                last_timeout = subprocess.TimeoutExpired(
+                    handle.command, escalation_timeout)
+                progress(
+                    f"PID {handle.workload_pid} did not exit after "
+                    f"{signal.Signals(signum).name}; escalating shutdown")
+        elif status is not None:
+            return status
+
+    # A profiled workload has now received SIGKILL.  Only at this point is the
+    # wrapper itself targeted, first with SIGTERM and finally with SIGKILL.
+    if handle.workload_pid is not None:
+        if node.process_exists(handle.workload_pid):
+            assert last_timeout is not None
+            raise last_timeout
+        progress(
+            f"Profile wrapper PID {handle.wrapper_pid} did not exit after its workload; "
+            "escalating wrapper shutdown")
+        for signum in (signal.SIGTERM, signal.SIGKILL):
+            node.signal_wrapper(handle, signum)
+            try:
+                return node.wait_process(handle, escalation_timeout)
+            except subprocess.TimeoutExpired as exc:
+                last_timeout = exc
+    assert last_timeout is not None
+    raise last_timeout
+
+
+def require_nonempty_file(path: Path, description: str) -> None:
+    if not path.is_file() or path.stat().st_size == 0:
+        raise RuntimeError(f"{description} is missing or empty: {path}")
 
 
 def parse_udp_rcvbuf_errors(text: str) -> int:
@@ -599,7 +785,7 @@ def execute_run(item: RunTuple, config: dict[str, Any], session_id: str,
     profile = benchmark.get("profile")
     remote_profile = remote_base + ("_perf_stat.csv" if profile == "stat" else "_perf.data")
     if profile in {"stat", "record"}:
-        receiver_artifacts.append(remote_profile)
+        receiver_artifacts.extend([remote_profile, f"{receiver_log}.workload.pid"])
     unavailable_events: list[str] = []
     if profile == "stat":
         events = list(benchmark.get("perf_events", [
@@ -619,9 +805,19 @@ def execute_run(item: RunTuple, config: dict[str, Any], session_id: str,
     active_sender: ProcessHandle | None = None
     cleanup_eligible = False
     try:
-        active_receiver = receiver_node.start_process(rx_command, receiver_log)
-        receiver_pid = active_receiver.pid
+        workload_index = None
+        if profile in {"stat", "record"}:
+            workload_index = next(
+                index for index, part in enumerate(rx_command)
+                if Path(part).name in RECEIVER_BINARIES)
+        active_receiver = receiver_node.start_process(
+            rx_command, receiver_log, workload_index=workload_index)
+        receiver_pid = active_receiver.shutdown_target_pid
+        profile_wrapper_pid = (active_receiver.wrapper_pid
+                               if active_receiver.workload_pid is not None else None)
         time.sleep(float(runtime["receiver_startup_seconds"]))
+        if not receiver_node.process_exists(receiver_pid):
+            raise RuntimeError(f"Receiver exited during startup: PID {receiver_pid}")
         before_counters = receiver_node.snapshot_counters(interface)
         before_state = run_state(receiver_node, interface)
         sender_interface = nodes["sender"].get("interface", interface)
@@ -642,12 +838,19 @@ def execute_run(item: RunTuple, config: dict[str, Any], session_id: str,
         after_counters = receiver_node.snapshot_counters(interface)
         after_state = run_state(receiver_node, interface)
         sender_after_state = run_state(sender_node, sender_interface)
-        receiver_node.signal_process(active_receiver, signal.SIGINT)
-        receiver_status = receiver_node.wait_process(
-            active_receiver, float(runtime["shutdown_timeout_seconds"]))
-        if receiver_status != 0:
-            raise RuntimeError(f"Receiver failed with status {receiver_status}: PID {active_receiver.pid}")
+        receiver_handle = active_receiver
+        receiver_status = shutdown_process(
+            receiver_node, receiver_handle, float(runtime["shutdown_timeout_seconds"]))
         active_receiver = None
+        if receiver_status != 0:
+            raise RuntimeError(
+                f"Receiver failed with status {receiver_status}: PID {receiver_pid}"
+                + (f" (profile wrapper PID {profile_wrapper_pid})"
+                   if profile_wrapper_pid is not None else ""))
+        if (receiver_handle.workload_pid is not None and
+                receiver_node.process_exists(receiver_handle.workload_pid)):
+            raise RuntimeError(
+                f"Profiled receiver PID {receiver_handle.workload_pid} survived wrapper exit")
 
         trace_path = run_dir / f"{run_id}.bin"
         rx_stats_path = run_dir / f"{run_id}_rx_stats.json"
@@ -655,6 +858,7 @@ def execute_run(item: RunTuple, config: dict[str, Any], session_id: str,
         receiver_node.fetch_file(remote_trace, trace_path)
         receiver_node.fetch_file(remote_rx_stats, rx_stats_path)
         sender_node.fetch_file(remote_tx_stats, tx_stats_path)
+        require_nonempty_file(rx_stats_path, "receiver stats")
         receiver_stats, sender_stats = safe_read_json(rx_stats_path), safe_read_json(tx_stats_path)
         counters = counter_deltas(before_counters, after_counters)
         successful = int(sender_stats["successful_sends"])
@@ -703,18 +907,24 @@ def execute_run(item: RunTuple, config: dict[str, Any], session_id: str,
         if profile == "stat":
             profile_path = run_dir / f"{run_id}_perf_stat.csv"
             receiver_node.fetch_file(remote_profile, profile_path)
+            require_nonempty_file(profile_path, "perf stat artifact")
             metadata["profile"] = {"mode": "stat", "artifact": profile_path.name,
                                    "unavailable_events": unavailable_events,
                                    "contributes_to_claim_measurements": False}
         elif profile == "record":
             report_text = receiver_node.run(["perf", "report", "--stdio", "-i", remote_profile], timeout=120)
+            if not report_text.strip():
+                raise RuntimeError("perf report produced empty output")
             report_path = run_dir / f"{run_id}_perf_report.txt"
             report_path.write_text(report_text + "\n", encoding="utf-8")
             perf_data_path = run_dir / f"{run_id}.perf.data"
             receiver_node.fetch_file(remote_profile, perf_data_path)
+            require_nonempty_file(perf_data_path, "perf record artifact")
             metadata["profile"] = {"mode": "record", "report": report_path.name,
                                    "perf_data": perf_data_path.name,
                                    "contributes_to_claim_measurements": False}
+        if profile_wrapper_pid is not None:
+            metadata["processes"]["profile_wrapper_pid"] = profile_wrapper_pid
         metadata_path = run_dir / f"{run_id}_meta.json"
         metadata_path.write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
         cleanup_eligible = True
@@ -723,16 +933,16 @@ def execute_run(item: RunTuple, config: dict[str, Any], session_id: str,
     finally:
         if active_sender is not None:
             try:
-                sender_node.signal_process(active_sender, signal.SIGINT)
-                sender_node.wait_process(active_sender, float(runtime["shutdown_timeout_seconds"]))
-            except Exception:
-                pass
+                shutdown_process(sender_node, active_sender,
+                                 float(runtime["shutdown_timeout_seconds"]))
+            except Exception as exc:
+                progress(f"Sender cleanup failed: {exc}")
         if active_receiver is not None:
             try:
-                receiver_node.signal_process(active_receiver, signal.SIGINT)
-                receiver_node.wait_process(active_receiver, float(runtime["shutdown_timeout_seconds"]))
-            except Exception:
-                pass
+                shutdown_process(receiver_node, active_receiver,
+                                 float(runtime["shutdown_timeout_seconds"]))
+            except Exception as exc:
+                progress(f"Receiver cleanup failed: {exc}")
         if cleanup_eligible:
             receiver_node.remove_files(receiver_artifacts)
             sender_node.remove_files(sender_artifacts)

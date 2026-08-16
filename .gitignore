@@ -1,6 +1,7 @@
 analysis/data/
 results/sessions/
 results/raw/
+results/profile-phase/
 *.perf.data
 build/
 .cache/

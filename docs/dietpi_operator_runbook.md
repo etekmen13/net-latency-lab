@@ -676,6 +676,28 @@ If a run is invalid, do not delete it or substitute one favorable repetition. Pr
 
 ## 14. Run profiling
 
+For the frozen DietPi campaign, the controller can perform the complete
+deployment, test, smoke, preflight, profile, validation, and summary sequence
+with one synchronous command:
+
+```bash
+./scripts/run_profile_phase.sh
+```
+
+The command refuses dirty controller or Pi checkouts and stale benchmark
+processes. It deploys the exact `benchmark_commit` shared by the measurement
+and profile configs, preserves timestamped logs under `results/profile-phase/`,
+and prints the validated session path on success. It does not commit, push,
+clean either checkout, kill stale processes, retry tuples, or accept a receiver
+shutdown status other than zero. To check local configuration and frozen-commit
+invariants without contacting either Pi, use:
+
+```bash
+./scripts/run_profile_phase.sh --dry-run
+```
+
+The manual commands below remain useful for diagnosis and individual reruns.
+
 Before starting the controller campaign, run the lifecycle smoke locally on the
 receiver Pi (never while a benchmark interval is active):
 

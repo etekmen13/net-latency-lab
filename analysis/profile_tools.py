@@ -116,6 +116,121 @@ def perf_running_percentages(path: Path) -> dict[str, float | None]:
     return percentages
 
 
+def _require_nonempty(path: Path, description: str) -> None:
+    if not path.is_file() or path.stat().st_size == 0:
+        raise ValueError(f"Missing or empty {description}: {path}")
+
+
+def _read_json_object(path: Path, description: str) -> dict[str, Any]:
+    _require_nonempty(path, description)
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Malformed {description}: {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ValueError(f"Malformed {description}: {path}: expected a JSON object")
+    return value
+
+
+def validate_profile_session(session: Path) -> Path:
+    """Validate the complete, fixed 12-run profile evidence set."""
+    if not session.is_dir():
+        raise ValueError(f"Profile session is not a directory: {session}")
+    manifest_path = session / "session_manifest.json"
+    manifest = _read_json_object(manifest_path, "session manifest")
+    runs = manifest.get("runs")
+    if not isinstance(runs, list) or len(runs) != 12:
+        count = len(runs) if isinstance(runs, list) else "missing"
+        raise ValueError(f"Expected exactly 12 profile runs, found {count}")
+
+    modes: list[str] = []
+    run_ids: set[str] = set()
+    metadata_paths: set[Path] = set()
+    for index, run_entry in enumerate(runs, start=1):
+        if not isinstance(run_entry, dict):
+            raise ValueError(f"Run {index} is missing manifest metadata")
+        metadata_name = run_entry.get("metadata")
+        trace_name = run_entry.get("trace")
+        if not isinstance(metadata_name, str) or not metadata_name:
+            raise ValueError(f"Run {index} is missing manifest metadata")
+        if not isinstance(trace_name, str) or not trace_name:
+            raise ValueError(f"Run {index} is missing its trace path")
+        metadata_path = session / metadata_name
+        if metadata_path in metadata_paths:
+            raise ValueError(f"Duplicate metadata path in manifest: {metadata_name}")
+        metadata_paths.add(metadata_path)
+        metadata = _read_json_object(metadata_path, "run metadata")
+
+        run_id = metadata.get("run_id")
+        if not isinstance(run_id, str) or not run_id:
+            raise ValueError(f"Run metadata is missing run_id: {metadata_path}")
+        if run_id in run_ids:
+            raise ValueError(f"Duplicate run_id: {run_id}")
+        run_ids.add(run_id)
+        if run_entry.get("run_id") != run_id:
+            raise ValueError(f"Manifest and metadata run_id disagree for {metadata_path}")
+        validity = metadata.get("validity")
+        if not isinstance(validity, dict) or validity.get("valid") is not True:
+            raise ValueError(f"Profile run is invalid: {run_id}")
+        run_description = metadata.get("run")
+        if not isinstance(run_description, dict):
+            raise ValueError(f"Run is missing run metadata: {run_id}")
+        if run_description.get("campaign") != "profile":
+            raise ValueError(f"Run is not in the profile campaign: {run_id}")
+
+        processes = metadata.get("processes")
+        if not isinstance(processes, dict):
+            raise ValueError(f"Run is missing process metadata: {run_id}")
+        receiver_pid = processes.get("receiver_pid")
+        wrapper_pid = processes.get("profile_wrapper_pid")
+        if (not isinstance(receiver_pid, int) or isinstance(receiver_pid, bool)
+                or receiver_pid <= 0 or not isinstance(wrapper_pid, int)
+                or isinstance(wrapper_pid, bool) or wrapper_pid <= 0):
+            raise ValueError(f"Run has invalid receiver/profile-wrapper PIDs: {run_id}")
+        if receiver_pid == wrapper_pid:
+            raise ValueError(f"Receiver and profile-wrapper PIDs alias in {run_id}")
+
+        trace_path = session / trace_name
+        _require_nonempty(trace_path, f"trace for {run_id}")
+        if not metadata_path.name.endswith("_meta.json"):
+            raise ValueError(f"Unexpected metadata filename: {metadata_path}")
+        stats_path = metadata_path.with_name(
+            metadata_path.name.removesuffix("_meta.json") + "_rx_stats.json")
+        _read_json_object(stats_path, f"receiver stats for {run_id}")
+        if not isinstance(metadata.get("receiver_stats"), dict):
+            raise ValueError(f"Run metadata is missing receiver stats: {run_id}")
+
+        profile = metadata.get("profile")
+        if not isinstance(profile, dict):
+            raise ValueError(f"Run is missing profile metadata: {run_id}")
+        mode = profile.get("mode")
+        if mode not in {"stat", "record"}:
+            raise ValueError(f"Unexpected profile mode for {run_id}: {mode!r}")
+        modes.append(mode)
+        if mode == "stat":
+            artifact = profile.get("artifact")
+            if not isinstance(artifact, str) or not artifact:
+                raise ValueError(f"Stat run is missing its perf artifact: {run_id}")
+            _require_nonempty(metadata_path.parent / artifact,
+                              f"perf stat artifact for {run_id}")
+        else:
+            perf_data, report = profile.get("perf_data"), profile.get("report")
+            if not isinstance(perf_data, str) or not perf_data:
+                raise ValueError(f"Record run is missing its perf artifact: {run_id}")
+            if not isinstance(report, str) or not report:
+                raise ValueError(f"Record run is missing its perf report: {run_id}")
+            _require_nonempty(metadata_path.parent / perf_data,
+                              f"perf record artifact for {run_id}")
+            _require_nonempty(metadata_path.parent / report,
+                              f"perf record report for {run_id}")
+
+    if modes.count("stat") != 9 or modes.count("record") != 3:
+        raise ValueError(
+            f"Expected 9 stat and 3 record runs, found "
+            f"{modes.count('stat')} stat and {modes.count('record')} record")
+    return session.resolve()
+
+
 def summarize_profiles(session: Path) -> Path:
     rows = []
     for metadata_path in sorted(session.glob("**/*_meta.json")):
@@ -166,8 +281,12 @@ if __name__ == "__main__":
     prepare.add_argument("output", type=Path)
     summarize = sub.add_parser("summarize")
     summarize.add_argument("session", type=Path)
+    validate = sub.add_parser("validate")
+    validate.add_argument("session", type=Path)
     args = parser.parse_args()
     if args.command == "prepare":
         print(prepare_profile_config(args.session, args.config, args.output))
-    else:
+    elif args.command == "summarize":
         print(summarize_profiles(args.session))
+    else:
+        print(validate_profile_session(args.session))

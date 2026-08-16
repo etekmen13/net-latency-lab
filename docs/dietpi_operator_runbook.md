@@ -680,7 +680,8 @@ Before starting the controller campaign, run the lifecycle smoke locally on the
 receiver Pi (never while a benchmark interval is active):
 
 ```bash
-cd /home/dietpi/net-latency-lab
+# Use the path configured as global.remote_project_root. For the active config:
+cd /root/net-latency-lab
 BUILD_SUBDIR=pi4-release ./scripts/profile_shutdown_smoke.sh
 ```
 

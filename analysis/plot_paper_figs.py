@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -13,11 +14,24 @@ def label(row: pd.Series) -> str:
     return f"{row.receiver} b={int(row.batch_size)}"
 
 
-def figure_throughput(per_run: pd.DataFrame, output: Path) -> Path:
+def campaign_title(campaign: str) -> str:
+    """Human title for a campaign name, e.g. work_5us -> "5 µs work"."""
+    if campaign == "raw":
+        return "Raw (0 ns work)"
+    if campaign.startswith("work_") and campaign.endswith("us"):
+        return f"{campaign[len('work_'):-len('us')]} µs work"
+    if campaign == "workload_10us":
+        return "10 µs work"
+    return campaign
+
+
+def figure_throughput(per_run: pd.DataFrame, output: Path,
+                      campaigns: Sequence[str] = ("raw", "workload_10us")) -> Path:
     physical = per_run[per_run.topology != "local_loopback"]
-    campaigns = [("raw", "Raw (0 ns work)"), ("workload_10us", "10 µs work")]
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8), sharex=False)
-    for row_index, (campaign, title) in enumerate(campaigns):
+    panels = [(name, campaign_title(name)) for name in campaigns]
+    fig, axes = plt.subplots(len(panels), 2, figsize=(12, 4 * len(panels)),
+                             sharex=False, squeeze=False)
+    for row_index, (campaign, title) in enumerate(panels):
         data = physical[physical.campaign == campaign]
         if data.empty:
             raise ValueError(f"Physical campaign {campaign!r} is missing")

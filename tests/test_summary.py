@@ -227,23 +227,29 @@ def test_aggregate_records_metrics_missing_from_some_repetitions():
 # --- resume-claim gate -------------------------------------------------------
 
 def claim_run(receiver, batch, rate, processed, repetition, *, sustainable=True,
-              loss=0.0, topology="distributed_ethernet"):
+              loss=0.0, topology="distributed_ethernet", ingress_loss=0,
+              spsc_overflow=0):
     return {"campaign": "raw", "topology": topology, "receiver": receiver,
             "batch_size": batch, "requested_rate_pps": rate,
             "processed_pps": processed, "application_loss_pct": loss,
             "run_valid": True, "sustainable_run": sustainable,
+            "ingress_loss": ingress_loss, "spsc_overflow": spsc_overflow,
             "run_id": f"{receiver}-b{batch}-{rate}-r{repetition}"}
 
 
 def claim_sessions(tmp_path, *, saturated=True, tie=False, topology="distributed_ethernet",
-                   batched_syscalls=0.125, batched_cycles=4000.0):
+                   batched_syscalls=0.125, batched_cycles=4000.0,
+                   threaded_syscalls=0.125, threaded_ingress_loss=0,
+                   threaded_spsc_overflow=0):
     rates = {"baseline": 100_000, "batched": 100_000 if tie else 200_000,
              "threaded": 100_000 if tie else 150_000}
     rows = []
     for receiver, rate in rates.items():
+        overlap = {"ingress_loss": threaded_ingress_loss,
+                   "spsc_overflow": threaded_spsc_overflow} if receiver == "threaded" else {}
         for repetition in range(1, 6):
             rows.append(claim_run(receiver, 8, rate, rate + repetition * 1e-3,
-                                  repetition, topology=topology))
+                                  repetition, topology=topology, **overlap))
             if saturated:
                 rows.append(claim_run(receiver, 8, rate * 2, rate, repetition,
                                       sustainable=False, loss=9.0, topology=topology))
@@ -253,7 +259,7 @@ def claim_sessions(tmp_path, *, saturated=True, tie=False, topology="distributed
 
     profile_rows = []
     counters = {"baseline": (1.0, 6000.0), "batched": (batched_syscalls, batched_cycles),
-                "threaded": (1.0, 9000.0)}
+                "threaded": (threaded_syscalls, 9000.0)}
     for receiver, (syscalls, cycles) in counters.items():
         for repetition in range(3):
             profile_rows.append({"run_id": f"{receiver}-{repetition}", "receiver": receiver,
@@ -280,11 +286,42 @@ def test_claim_gate_emits_a_sentence_only_for_a_supported_mechanism(tmp_path):
     assert batched.baseline_repetitions == 5 and batched.candidate_repetitions == 5
     assert batched.candidate_application_loss_pct_max <= 0.1
     assert batched.resume_claim.startswith("On two Raspberry Pi 4s")
-    # Threaded is faster but burns more cycles per packet: no mechanism, no claim.
+    # The pipelined receiver's mechanism is overlap, not cheapness. Its profile
+    # is process-wide and counts a worker thread that busy-polls an empty queue,
+    # so cycles per packet is higher by construction -- requiring it to fall
+    # would make the gate unpassable whatever the architecture did.
     threaded = rows.loc["threaded"]
+    assert threaded.candidate_cycles_per_packet > threaded.baseline_cycles_per_packet
+    assert threaded.claim_passes
+    assert "zero kernel ingress loss" in threaded.resume_claim
+
+
+def test_claim_gate_requires_the_pipelined_overlap_to_have_held(tmp_path):
+    """The pipelined claim rests on the receive path never dropping a packet
+    and the queue never overflowing, in every repetition."""
+    dropped = claim_rows(tmp_path, threaded_ingress_loss=1).loc["threaded"]
+    assert not dropped.claim_passes
+    assert "kernel ingress loss" in dropped.claim_blockers
+
+    overflowed = claim_rows(tmp_path, threaded_spsc_overflow=3).loc["threaded"]
+    assert not overflowed.claim_passes
+    assert "queue overflow" in overflowed.claim_blockers
+
+    # The syscall half of the mechanism still applies to the pipelined receiver.
+    unamortised = claim_rows(tmp_path, threaded_syscalls=1.0).loc["threaded"]
+    assert not unamortised.claim_passes
+    assert "receive syscalls per packet not meaningfully reduced" in unamortised.claim_blockers
+
+
+def test_claim_gate_refuses_the_pipelined_claim_without_overlap_evidence(tmp_path):
+    """Missing per-run columns must block, not silently pass."""
+    measurement, profile = claim_sessions(tmp_path)
+    runs = pd.read_csv(measurement / "per_run_summary.csv").drop(columns=["spsc_overflow"])
+    runs.to_csv(measurement / "per_run_summary.csv", index=False)
+    output = generate_claims(measurement, profile, tmp_path / "claim_evidence.csv")
+    threaded = pd.read_csv(output).set_index("candidate").loc["threaded"]
     assert not threaded.claim_passes
-    assert pd.isna(threaded.resume_claim) or threaded.resume_claim == ""
-    assert "cycles per packet not reduced" in threaded.claim_blockers
+    assert "spsc_overflow unavailable" in threaded.claim_blockers
 
 
 def test_claim_gate_rejects_a_sender_limited_tie(tmp_path):

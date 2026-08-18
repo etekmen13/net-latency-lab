@@ -54,51 +54,78 @@ def sustainable_groups(per_run: pd.DataFrame, campaign: str = "raw") -> pd.DataF
     measurement noise.
     """
     data = claim_population(per_run, campaign)
-    group_keys = ["receiver", "batch_size", "requested_rate_pps"]
-    group_keys += [key for key in CONFIGURATION_KEYS if key in data.columns]
-    highest_tested = data.groupby(["receiver", "batch_size"]).requested_rate_pps.max()
+    configuration = [key for key in CONFIGURATION_KEYS if key in data.columns]
+    group_keys = ["receiver", "batch_size", "requested_rate_pps"] + configuration
+    # Saturation must be judged against the highest rate tested for the SAME
+    # workload. Grouping only by receiver/batch would compare a 5 us sweep that
+    # tops out at 210k against a 0 ns sweep that reached 950k and mark every 5 us
+    # group "saturated" on the strength of an unrelated campaign's maximum.
+    highest_tested = data.groupby(["receiver", "batch_size"] + configuration
+                                  ).requested_rate_pps.max()
     rows = []
     for key, group in data.groupby(group_keys):
         receiver, batch_size, rate = key[0], int(key[1]), int(key[2])
         if len(group) != REQUIRED_REPETITIONS or not bool(group.sustainable_run.all()):
             continue
-        maximum_tested = int(highest_tested.loc[(receiver, batch_size)])
-        rows.append({"receiver": receiver, "batch_size": batch_size,
-                     "requested_rate_pps": rate,
-                     "repetitions": len(group),
-                     "processed_pps_median": float(group.processed_pps.median()),
-                     "processed_pps_min": float(group.processed_pps.min()),
-                     "processed_pps_max": float(group.processed_pps.max()),
-                     "application_loss_pct_max": float(group.application_loss_pct.max()),
-                     "max_tested_rate_pps": maximum_tested,
-                     "saturated": bool(rate < maximum_tested),
-                     "run_ids": "|".join(sorted(group.run_id.astype(str)))})
+        maximum_tested = int(highest_tested.loc[(receiver, batch_size, *key[3:])])
+        row = {"receiver": receiver, "batch_size": batch_size,
+               "requested_rate_pps": rate,
+               "repetitions": len(group),
+               "processed_pps_median": float(group.processed_pps.median()),
+               "processed_pps_min": float(group.processed_pps.min()),
+               "processed_pps_max": float(group.processed_pps.max()),
+               "application_loss_pct_max": float(group.application_loss_pct.max()),
+               "max_tested_rate_pps": maximum_tested,
+               "saturated": bool(rate < maximum_tested),
+               "campaign": campaign,
+               "run_ids": "|".join(sorted(group.run_id.astype(str)))}
+        # Carry the workload identity into the row. Without it downstream
+        # selection cannot tell one workload from another and silently mixes
+        # them; see select_representatives.
+        row.update({name: group[name].iloc[0] for name in configuration})
+        rows.append(row)
     return pd.DataFrame(rows)
 
 
-def select_representatives(per_run: pd.DataFrame) -> list[dict[str, Any]]:
-    passing = sustainable_groups(per_run)
+def select_representatives(per_run: pd.DataFrame, campaign: str = "raw",
+                           work_ns: int | None = None) -> list[dict[str, Any]]:
+    passing = sustainable_groups(per_run, campaign)
     if passing.empty:
-        raise ValueError("No raw configuration has five sustainable repetitions")
+        raise ValueError(f"No {campaign} configuration has five sustainable repetitions")
+    if work_ns is not None:
+        passing = passing[passing.work_ns == int(work_ns)]
+        if passing.empty:
+            raise ValueError(f"No {campaign} configuration at work_ns={work_ns} "
+                             "has five sustainable repetitions")
     selected = []
     for receiver in ("baseline", "batched", "threaded"):
         candidates = passing[passing.receiver == receiver]
         if candidates.empty:
             raise ValueError(f"No sustainable configuration for {receiver}")
-        # Each batch competes at its highest sustainable rate.
-        candidates = candidates.loc[candidates.groupby("batch_size").requested_rate_pps.idxmax()]
+        # Each batch competes at its highest sustainable rate, per workload.
+        # Grouping by batch_size alone let the highest-rate row win outright, so
+        # a 0 ns baseline could be paired against a 5 us candidate: the rate is
+        # always higher without per-packet work, and nothing downstream compares
+        # the two rows' work_ns.
+        grouping = ["batch_size"] + [key for key in ("work_ns", "sample_every")
+                                     if key in candidates.columns]
+        candidates = candidates.loc[candidates.groupby(grouping).requested_rate_pps.idxmax()]
         best_pps = float(candidates.processed_pps_median.max())
         within_two_percent = candidates[candidates.processed_pps_median >= .98 * best_pps]
         choice = within_two_percent.sort_values(["batch_size", "requested_rate_pps"],
                                                 ascending=[True, False]).iloc[0]
         selected.append(choice.to_dict())
+    workloads = {row.get("work_ns") for row in selected}
+    if len(workloads) > 1:
+        raise ValueError(f"Selected representatives span multiple workloads: {sorted(workloads)}")
     return selected
 
 
-def prepare_profile_config(session: Path, source_config: Path,
-                           output: Path) -> Path:
+def prepare_profile_config(session: Path, source_config: Path, output: Path,
+                           campaign: str = "raw",
+                           work_ns: int | None = None) -> Path:
     per_run = pd.read_csv(session / "per_run_summary.csv")
-    selected = select_representatives(per_run)
+    selected = select_representatives(per_run, campaign, work_ns)
     profile_rate = math.floor(.8 * min(int(row["requested_rate_pps"]) for row in selected))
     source = yaml.safe_load(source_config.read_text(encoding="utf-8"))
     if not isinstance(source, dict) or not isinstance(source.get("global"), dict):
@@ -110,16 +137,23 @@ def prepare_profile_config(session: Path, source_config: Path,
         receiver = str(row["receiver"])
         binary = {"baseline": "receiver_baseline", "batched": "receiver_batched",
                   "threaded": "receiver_threaded"}[receiver]
-        def common() -> dict[str, Any]:
+        def common(row: dict[str, Any] = row) -> dict[str, Any]:
             # Fresh objects per benchmark: sharing one dict makes yaml.safe_dump
             # emit anchors/aliases, so the published config snapshot no longer
             # reads as a literal, independently checkable benchmark list.
+            #
+            # The workload is taken from the selected row rather than hardcoded.
+            # Profiling at work_ns=0 while claiming a result measured at 5 us
+            # would make cycles_per_packet in the mechanism gate describe a
+            # different experiment from the one being published.
             return {
                 "receiver": {"binary": binary, "batch_sizes": [int(row["batch_size"])],
-                             "work_ns": 0, "sample_every": 0},
-                "sender": {"mode": "steady", "duration_seconds": 30,
+                             "work_ns": int(row.get("work_ns", 0)),
+                             "sample_every": int(row.get("sample_every", 0))},
+                "sender": {"mode": "steady",
+                           "duration_seconds": float(row.get("duration_seconds", 30)),
                            "rates_pps": [profile_rate], "burst_sizes": [1],
-                           "payload_size": 64},
+                           "payload_size": int(row.get("payload_size", 64))},
             }
         config["benchmarks"].append({"name": f"profile_stat_{receiver}",
             "campaign": "profile", "repetitions": 3, "profile": "stat",
@@ -130,6 +164,8 @@ def prepare_profile_config(session: Path, source_config: Path,
     plan = {"schema_version": 1, "source_session": str(session),
             "selection_rule": "highest median processed PPS among sustainable batches; within 2%, smaller batch",
             "load_rule": "80% of the lowest selected sustainable requested rate",
+            "campaign": campaign,
+            "work_ns": int(selected[0].get("work_ns", 0)),
             "profile_rate_pps": profile_rate,
             "saturated": {str(row["receiver"]): bool(row.get("saturated", False))
                           for row in selected},
@@ -347,13 +383,18 @@ if __name__ == "__main__":
     prepare.add_argument("session", type=Path)
     prepare.add_argument("config", type=Path)
     prepare.add_argument("output", type=Path)
+    prepare.add_argument("--campaign", default="raw",
+                         help="campaign whose representatives are profiled")
+    prepare.add_argument("--work-ns", type=int, default=None,
+                         help="restrict selection to this per-packet work budget")
     summarize = sub.add_parser("summarize")
     summarize.add_argument("session", type=Path)
     validate = sub.add_parser("validate")
     validate.add_argument("session", type=Path)
     args = parser.parse_args()
     if args.command == "prepare":
-        print(prepare_profile_config(args.session, args.config, args.output))
+        print(prepare_profile_config(args.session, args.config, args.output,
+                                     args.campaign, args.work_ns))
     elif args.command == "summarize":
         print(summarize_profiles(args.session))
     else:

@@ -50,6 +50,49 @@ def test_representative_selection_uses_five_runs_and_two_percent_tiebreak():
     assert len(selected["batched"]["run_ids"].split("|")) == 5
 
 
+def _workload_fixture() -> pd.DataFrame:
+    """Two workloads under one campaign: 0 ns reaches higher rates than 5 us."""
+    rows = []
+    for receiver, batch in (("baseline", 1), ("batched", 64), ("threaded", 64)):
+        for work_ns, requested, processed in ((0, 350_000, 349_000),
+                                              (5000, 150_000, 149_000)):
+            for repetition in range(1, 6):
+                row = _run(receiver, batch, requested, processed, repetition)
+                row["work_ns"] = work_ns
+                row["run_id"] = f"{receiver}-{batch}-{work_ns}-{requested}-{repetition}"
+                rows.append(row)
+                failing = _run(receiver, batch, requested * 2, processed,
+                               repetition, sustainable=False, loss=5.0)
+                failing["work_ns"] = work_ns
+                failing["run_id"] = f"{receiver}-{batch}-{work_ns}-hi-{repetition}"
+                rows.append(failing)
+    return pd.DataFrame(rows)
+
+
+def test_representative_selection_never_mixes_two_workloads():
+    """A 0 ns baseline must not be paired against a 5 us candidate.
+
+    The unrestricted rate is always higher without per-packet work, so a
+    selection that groups only by batch size silently picks the 0 ns row for
+    every receiver -- and nothing downstream compares the two rows' work_ns.
+    """
+    selected = select_representatives(_workload_fixture(), work_ns=5000)
+    assert {row["work_ns"] for row in selected} == {5000}
+    assert {int(row["requested_rate_pps"]) for row in selected} == {150_000}
+
+    unrestricted = select_representatives(_workload_fixture())
+    assert len({row["work_ns"] for row in unrestricted}) == 1
+
+
+def test_saturation_is_judged_within_one_workload():
+    """A 5 us sweep topping out at 300k is not "saturated" because a separate
+    0 ns sweep in the same campaign happened to reach 700k."""
+    groups = sustainable_groups(_workload_fixture())
+    for _, row in groups.iterrows():
+        assert row["max_tested_rate_pps"] == row["requested_rate_pps"] * 2
+        assert bool(row["saturated"]) is True
+
+
 def test_sustainable_groups_reject_loopback_rows():
     frame = profile_fixture()
     frame.loc[frame.receiver == "baseline", "topology"] = "local_loopback"

@@ -45,7 +45,25 @@ def _throughput_blockers(baseline: dict[str, Any], candidate: dict[str, Any],
 
 
 def _mechanism_blockers(base_profile: pd.Series, candidate_profile: pd.Series,
-                        baseline: dict[str, Any], candidate: dict[str, Any]) -> list[str]:
+                        baseline: dict[str, Any], candidate: dict[str, Any],
+                        receiver: str, runs: pd.DataFrame) -> list[str]:
+    """Require the mechanism each architecture actually claims.
+
+    Both candidates must show fewer receive syscalls per packet. Beyond that
+    they differ, and applying one rule to both is wrong in a way that silently
+    decides the outcome:
+
+    ``batched`` amortises syscall entry on a single core, so its cost really
+    should fall -- cycles per packet is the right test.
+
+    ``threaded`` does not claim to be cheaper. It claims to *overlap* receive
+    and processing across two cores, and it pays for that with a handoff. Its
+    profile is taken process-wide, so it counts a second thread that busy-polls
+    an empty queue: cycles per packet is higher by construction and the old rule
+    could never pass, whatever the architecture did. The honest test is that the
+    overlap held -- the receive path never dropped a packet into the kernel and
+    the queue never overflowed, across every repetition.
+    """
     blockers: list[str] = []
     for name, row, selected in (("baseline", base_profile, baseline),
                                 ("candidate", candidate_profile, candidate)):
@@ -58,19 +76,43 @@ def _mechanism_blockers(base_profile: pd.Series, candidate_profile: pd.Series,
         blockers.append("receive syscalls per packet unavailable")
     elif float(candidate_syscalls) > MAX_CANDIDATE_SYSCALL_FRACTION * float(base_syscalls):
         blockers.append("receive syscalls per packet not meaningfully reduced")
-    base_cycles = base_profile.get("cycles_per_packet")
-    candidate_cycles = candidate_profile.get("cycles_per_packet")
-    if not (_finite(base_cycles) and _finite(candidate_cycles)):
-        blockers.append("cycles per packet unavailable")
-    elif float(candidate_cycles) >= float(base_cycles):
-        blockers.append("cycles per packet not reduced")
+
+    if receiver == "threaded":
+        blockers.extend(_overlap_blockers(candidate, runs))
+    else:
+        base_cycles = base_profile.get("cycles_per_packet")
+        candidate_cycles = candidate_profile.get("cycles_per_packet")
+        if not (_finite(base_cycles) and _finite(candidate_cycles)):
+            blockers.append("cycles per packet unavailable")
+        elif float(candidate_cycles) >= float(base_cycles):
+            blockers.append("cycles per packet not reduced")
     return blockers
 
 
-def generate(measurement_session: Path, profile_session: Path, output: Path) -> Path:
+def _overlap_blockers(candidate: dict[str, Any], runs: pd.DataFrame) -> list[str]:
+    """Every repetition of the selected pipelined configuration must show a
+    clean handoff: no kernel ingress loss and no queue overflow."""
+    identifiers = set(str(candidate.get("run_ids", "")).split("|"))
+    selected_runs = runs[runs.run_id.astype(str).isin(identifiers)]
+    if len(selected_runs) != REQUIRED_REPETITIONS:
+        return [f"only {len(selected_runs)} of {REQUIRED_REPETITIONS} pipelined "
+                "repetitions could be matched back to per-run rows"]
+    blockers = []
+    for column, description in (("ingress_loss", "kernel ingress loss"),
+                                ("spsc_overflow", "queue overflow")):
+        if column not in selected_runs.columns:
+            blockers.append(f"{column} unavailable, cannot verify the overlap mechanism")
+        elif int(selected_runs[column].fillna(-1).max()) != 0:
+            blockers.append(f"pipelined repetitions show {description}")
+    return blockers
+
+
+def generate(measurement_session: Path, profile_session: Path, output: Path,
+             campaign: str = "raw", work_ns: int | None = None) -> Path:
     runs = pd.read_csv(measurement_session / "per_run_summary.csv")
     profiles = pd.read_csv(profile_session / "profile_summary.csv")
-    selected = {row["receiver"]: row for row in select_representatives(runs)}
+    selected = {row["receiver"]: row
+                for row in select_representatives(runs, campaign, work_ns)}
     baseline = selected["baseline"]
     profile_medians = profiles.groupby("receiver", as_index=True).median(numeric_only=True)
     rows = []
@@ -82,18 +124,26 @@ def generate(measurement_session: Path, profile_session: Path, output: Path) -> 
             base_profile = profile_medians.loc["baseline"]
             candidate_profile = profile_medians.loc[receiver]
             mechanism_blockers = _mechanism_blockers(base_profile, candidate_profile,
-                                                     baseline, candidate)
+                                                     baseline, candidate, receiver, runs)
         else:
             base_profile = candidate_profile = pd.Series(dtype="float64")
             mechanism_blockers = [f"profile summary has no rows for baseline and {receiver}"]
         mechanism = not mechanism_blockers
         passes = bool(not blockers and mechanism)
+        workload = int(candidate.get("work_ns", 0))
+        budget = (f" under a {workload / 1000:g} us per-packet processing budget"
+                  if workload else "")
+        mechanism_sentence = ("fewer receive syscalls per packet, with zero kernel "
+                              "ingress loss and zero queue overflow in every repetition"
+                              if receiver == "threaded"
+                              else "fewer receive syscalls and cycles per packet")
         claim = (f"On two Raspberry Pi 4s over direct 1 GbE, {receiver} sustained "
                  f"{improvement:.2f}x the processed UDP packet rate of recvfrom at <=0.1% "
-                 "application loss across all five repetitions; perf attributed the result "
-                 "to fewer receive syscalls and cycles per packet.") if passes else ""
+                 f"application loss across all five repetitions{budget}; perf attributed "
+                 f"the result to {mechanism_sentence}.") if passes else ""
         rows.append({
             "candidate": receiver,
+            "campaign": campaign, "work_ns": workload,
             "baseline_configuration": f"baseline/batch={int(baseline['batch_size'])}",
             "candidate_configuration": f"{receiver}/batch={int(candidate['batch_size'])}",
             "baseline_run_ids": baseline["run_ids"], "candidate_run_ids": candidate["run_ids"],
@@ -129,5 +179,8 @@ if __name__ == "__main__":
     parser.add_argument("measurement_session", type=Path)
     parser.add_argument("profile_session", type=Path)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--campaign", default="raw")
+    parser.add_argument("--work-ns", type=int, default=None)
     args = parser.parse_args()
-    print(generate(args.measurement_session, args.profile_session, args.output))
+    print(generate(args.measurement_session, args.profile_session, args.output,
+                   args.campaign, args.work_ns))

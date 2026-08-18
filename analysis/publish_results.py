@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import shutil
+from collections.abc import Sequence
 from pathlib import Path
 
 import pandas as pd
@@ -23,15 +24,23 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def publish(measurement: Path, profile: Path, output: Path) -> Path:
+def publish(measurement: Path, profile: Path, output: Path,
+            campaigns: Sequence[str] = ("raw", "workload_10us"),
+            claim_campaign: str | None = None,
+            claim_work_ns: int | None = None) -> Path:
+    campaigns = list(campaigns)
+    claim_campaign = claim_campaign or campaigns[0]
+    if claim_campaign not in campaigns:
+        raise ValueError(f"Claim campaign {claim_campaign!r} is not among the published "
+                         f"campaigns {campaigns}")
     runs = pd.read_csv(measurement / "per_run_summary.csv")
     physical = runs[runs.topology != "local_loopback"]
     if physical.empty:
         raise ValueError("Publication requires physical Ethernet data")
-    for campaign in ("raw", "workload_10us"):
+    for campaign in campaigns:
         if physical[physical.campaign == campaign].empty:
             raise ValueError(f"Physical campaign {campaign!r} has no runs")
-    comparison = physical[physical.campaign.isin(["raw", "workload_10us"])]
+    comparison = physical[physical.campaign.isin(campaigns)]
     grouped = comparison.groupby(["campaign", "receiver", "batch_size", "requested_rate_pps"])
     bad_repetitions = [str(key) for key, group in grouped if len(group) != 5]
     if bad_repetitions:
@@ -51,8 +60,9 @@ def publish(measurement: Path, profile: Path, output: Path) -> Path:
     output.mkdir(parents=True, exist_ok=True)
     cleaned = pd.read_csv(measurement / "repetition_summary.csv")
     cleaned.to_csv(output / "benchmark_summary.csv", index=False)
-    generate_claims(measurement, profile, output / "claim_evidence.csv")
-    figure_throughput(runs, output / "figure1_throughput_loss.png")
+    generate_claims(measurement, profile, output / "claim_evidence.csv",
+                    claim_campaign, claim_work_ns)
+    figure_throughput(runs, output / "figure1_throughput_loss.png", campaigns)
     figure_profiles(profiles, output / "figure2_profile_mechanism.png")
     for report in profile.glob("**/*_perf_report.txt"):
         shutil.copy2(report, output / report.name)
@@ -74,5 +84,12 @@ if __name__ == "__main__":
     parser.add_argument("measurement_session", type=Path)
     parser.add_argument("profile_session", type=Path)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--campaigns", nargs="+", default=["raw", "workload_10us"],
+                        help="comparative campaigns to publish")
+    parser.add_argument("--claim-campaign", default=None,
+                        help="campaign the resume claim is drawn from (default: the first)")
+    parser.add_argument("--claim-work-ns", type=int, default=None,
+                        help="restrict the claim to this per-packet work budget")
     args = parser.parse_args()
-    print(publish(args.measurement_session, args.profile_session, args.output))
+    print(publish(args.measurement_session, args.profile_session, args.output,
+                  args.campaigns, args.claim_campaign, args.claim_work_ns))

@@ -18,7 +18,8 @@ attempt() {
   "$@" >/dev/null || { echo "restore failed: ${description}" >&2; FAILURES=$((FAILURES + 1)); }
 }
 
-for key in net.core.rmem_max net.core.wmem_max kernel.perf_event_paranoid kernel.kptr_restrict; do
+for key in net.core.rmem_max net.core.wmem_max kernel.perf_event_paranoid \
+           kernel.kptr_restrict kernel.sched_rt_runtime_us; do
   saved="${SNAPSHOT}/${key##*.}"
   [[ -s ${saved} ]] || { echo "restore skipped (no snapshot): ${key}" >&2; FAILURES=$((FAILURES + 1)); continue; }
   attempt "${key}" sysctl -w "${key}=$(cat "${saved}")"
@@ -50,6 +51,15 @@ for saved in "${SNAPSHOT}"/irq/*; do
   cat "${saved}" > "${target}" ||
     { echo "restore failed: IRQ ${irq} affinity" >&2; FAILURES=$((FAILURES + 1)); }
 done
+
+if [[ -s ${SNAPSHOT}/pause && -s ${SNAPSHOT}/bench_interface ]]; then
+  interface=$(cat "${SNAPSHOT}/bench_interface")
+  autoneg=$(awk '/^Autonegotiate:/ {print $2}' "${SNAPSHOT}/pause")
+  rx=$(awk '/^RX:/ {print $2}' "${SNAPSHOT}/pause")
+  tx=$(awk '/^TX:/ {print $2}' "${SNAPSHOT}/pause")
+  attempt "pause frames on ${interface}" \
+    ethtool -A "${interface}" autoneg "${autoneg:-on}" rx "${rx:-on}" tx "${tx:-on}"
+fi
 
 if grep -q '^active' "${SNAPSHOT}/irqbalance" 2>/dev/null; then
   attempt "irqbalance restart" systemctl start irqbalance

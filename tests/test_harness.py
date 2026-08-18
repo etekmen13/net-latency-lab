@@ -15,10 +15,11 @@ import pytest
 import yaml
 
 from main import (analyze_pacing_trace, counter_deltas, parse_qdisc_drops,
-                  parse_udp_rcvbuf_errors, parse_udp_sndbuf_errors,
-                  parse_udp_socket_drops, qualification_rates,
-                  qualification_reasons, receiver_command,
-                  sender_command, validate_config, run_campaign, ProcessHandle,
+                  parse_ethtool_statistic, parse_udp_rcvbuf_errors,
+                  parse_udp_sndbuf_errors, parse_udp_socket_drops,
+                  qualification_rates, qualification_reasons, receiver_command,
+                  sender_command, split_counter_sections, validate_config,
+                  validity_reasons, run_campaign, ProcessHandle,
                   LocalNode, NodeController, RemoteNode, shutdown_process)
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -101,6 +102,91 @@ def test_extended_drop_counter_parsers():
     assert parse_udp_socket_drops(udp) == 10
     assert parse_qdisc_drops("Sent 1 bytes 1 pkt (dropped 2, overlimits 0)\n"
                              "Sent 2 bytes 2 pkt (dropped 3, overlimits 0)\n") == 5
+
+
+def test_batched_counter_snapshot_uses_one_command_and_splits_sections():
+    """All counters are sampled in a single round trip, then split apart."""
+    commands: list[str] = []
+
+    class RecordingNode(NodeController):
+        def run(self, command, timeout=30.0):
+            commands.append(command[-1])
+            snmp = ("Udp: InDatagrams RcvbufErrors SndbufErrors\n"
+                    "Udp: 10 3 4\n")
+            udp = ("  sl  local_address rem_address st tx_queue rx_queue tr "
+                   "tm->when retrnsmt uid timeout inode ref pointer drops\n"
+                   "  1: 00000000:0000 00000000:0000 07 0 0 0 0 0 0 0 0 7\n")
+            sections = {
+                "snmp": snmp,
+                "udp": udp,
+                "qdisc": "Sent 1 bytes 1 pkt (dropped 2, overlimits 0)\n",
+                "ethtool_stats": "     rx_pause: 11\n     tx_pause: 12\n",
+            }
+            for name in ("rx_dropped", "rx_errors", "rx_missed_errors",
+                         "rx_crc_errors", "tx_dropped", "tx_errors",
+                         "tx_carrier_errors"):
+                sections[f"nic_{name}"] = "0\n"
+            return "".join(f"<<<NLL-COUNTER {name}>>>\n{body}"
+                           for name, body in sections.items())
+
+    counters = RecordingNode().snapshot_counters("eth0")
+    assert len(commands) == 1
+    assert counters["udp_rcvbuf_errors"]["value"] == 3
+    assert counters["udp_sndbuf_errors"]["value"] == 4
+    assert counters["udp_socket_drops"]["value"] == 7
+    assert counters["qdisc_drops"]["value"] == 2
+    assert counters["nic_rx_pause"]["value"] == 11
+    assert counters["nic_tx_pause"]["value"] == 12
+    assert counters["nic_rx_dropped"]["value"] == 0
+
+
+def test_counter_sections_report_missing_and_failed_probes():
+    names = ["snmp", "qdisc"]
+    partial = split_counter_sections(
+        {"value": "<<<NLL-COUNTER snmp>>>\nUdp: 1 2 3\n", "error": None}, names)
+    assert partial["snmp"]["value"] == "Udp: 1 2 3"
+    # A section the remote shell never emitted must surface as an error rather
+    # than as an empty value that silently parses to zero.
+    assert partial["qdisc"]["value"] is None
+    assert "missing" in partial["qdisc"]["error"]
+
+    failed = split_counter_sections({"value": None, "error": "ssh died"}, names)
+    assert all(entry["error"] == "ssh died" for entry in failed.values())
+
+    with pytest.raises(ValueError):
+        parse_ethtool_statistic("     rx_pause: 5\n", "tx_pause")
+
+
+def test_pause_frames_invalidate_a_distributed_run():
+    """802.3x pause makes offered load a dependent variable, so it is fatal."""
+    sender = {"successful_sends": 10, "cpu_affinity": {"success": True}}
+    receiver = {"unique_valid_packets": 10, "unique_processed_packets": 10,
+                "valid_packets": 10, "processed_packets": 10, "spsc_overflow": 0,
+                "queue_depth_at_shutdown": 0, "socket_pending_bytes_at_shutdown": 0,
+                "first_receive_mono_ns": 1, "last_receive_mono_ns": 2,
+                "first_processing_mono_ns": 1, "last_processing_mono_ns": 2,
+                "requested_socket_buffer_bytes": 0, "observed_socket_buffer_bytes": 0}
+    state = {"link": {"value": "Speed: 1000Mb/s", "error": None},
+             "throttled": {"value": "throttled=0x0", "error": None}}
+
+    def counters(rx_delta, tx_delta):
+        return {"nic_rx_pause": {"before": 0, "after": rx_delta,
+                                 "delta": rx_delta, "error": None},
+                "nic_tx_pause": {"before": 0, "after": tx_delta,
+                                 "delta": tx_delta, "error": None}}
+
+    quiet = validity_reasons(sender, receiver, counters(0, 0), state, state,
+                             "distributed_ethernet", state, state)
+    assert not any("pause" in reason for reason in quiet)
+
+    paused = validity_reasons(sender, receiver, counters(0, 7028672), state, state,
+                              "distributed_ethernet", state, state)
+    assert any("pause frames were exchanged" in reason for reason in paused)
+
+    # Loopback has no NIC pause counters, so the gate must not fire there.
+    loopback = validity_reasons(sender, receiver, {}, state, state,
+                                "local_loopback", state, state)
+    assert not any("pause" in reason for reason in loopback)
 
 
 def test_pacing_trace_analysis_accepts_uniform_windows_and_rejects_gap(tmp_path):

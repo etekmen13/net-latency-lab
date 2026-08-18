@@ -37,6 +37,19 @@ except ImportError:
 
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 RECEIVER_BINARIES = {"receiver_baseline", "receiver_batched", "receiver_threaded"}
+NIC_STATISTICS = ("rx_dropped", "rx_errors", "rx_missed_errors", "rx_crc_errors",
+                  "tx_dropped", "tx_errors", "tx_carrier_errors")
+COUNTER_SECTION_PREFIX = "<<<NLL-COUNTER "
+
+# A full campaign is hours of runs over a Wi-Fi management link, so a single
+# dropped connection must not discard the session. Only transport failures are
+# retried: a measurement that ran and failed its own validity rules is a result,
+# not an error, and repeating it until it passes would be fraud.
+MAX_RUN_ATTEMPTS = 2
+TRANSPORT_FAILURES: tuple[type[BaseException], ...] = (
+    ConnectionError, EOFError, TimeoutError, subprocess.TimeoutExpired)
+if paramiko is not None:
+    TRANSPORT_FAILURES = TRANSPORT_FAILURES + (paramiko.SSHException,)
 
 
 def progress(message: str) -> None:
@@ -164,23 +177,39 @@ class NodeController:
         return parse_counter(probe(self, command), parser)
 
     def snapshot_counters(self, interface: str) -> dict[str, dict[str, Any]]:
-        # /proc/net/snmp carries both UDP error counters, so it is sampled once:
-        # a second read would cost another round trip and pair the two counters
-        # with different instants.
-        snmp = probe(self, ["cat", "/proc/net/snmp"])
+        # Every counter is sampled in a single command. Issuing eleven separate
+        # commands cost eleven round trips, spread the sample over tens of
+        # milliseconds so counters that must be compared were read at different
+        # instants, and gave a campaign eleven times as many chances to trip a
+        # transient SSH failure. /proc/net/snmp and ethtool -S each carry two of
+        # the counters below and are therefore read once, not twice.
+        sections = [
+            ("snmp", "cat /proc/net/snmp"),
+            ("udp", "cat /proc/net/udp"),
+            ("qdisc", f"tc -s qdisc show dev {interface}"),
+            ("ethtool_stats", f"ethtool -S {interface}"),
+        ] + [(f"nic_{name}", f"cat /sys/class/net/{interface}/statistics/{name}")
+             for name in NIC_STATISTICS]
+        script = "".join(f"printf '{COUNTER_SECTION_PREFIX}%s>>>\\n' {name}; "
+                         f"{command} 2>/dev/null; "
+                         for name, command in sections)
+        captured = split_counter_sections(probe(self, ["sh", "-c", script]),
+                                          [name for name, _ in sections])
         counters = {
-            "udp_rcvbuf_errors": parse_counter(snmp, parse_udp_rcvbuf_errors),
-            "udp_sndbuf_errors": parse_counter(snmp, parse_udp_sndbuf_errors),
-            "udp_socket_drops": self.read_counter(
-                ["cat", "/proc/net/udp"], parse_udp_socket_drops),
-            "qdisc_drops": self.read_counter(
-                ["tc", "-s", "qdisc", "show", "dev", interface], parse_qdisc_drops),
+            "udp_rcvbuf_errors": parse_counter(captured["snmp"], parse_udp_rcvbuf_errors),
+            "udp_sndbuf_errors": parse_counter(captured["snmp"], parse_udp_sndbuf_errors),
+            "udp_socket_drops": parse_counter(captured["udp"], parse_udp_socket_drops),
+            "qdisc_drops": parse_counter(captured["qdisc"], parse_qdisc_drops),
         }
-        for name in ("rx_dropped", "rx_errors", "rx_missed_errors", "rx_crc_errors",
-                     "tx_dropped", "tx_errors", "tx_carrier_errors"):
-            path = f"/sys/class/net/{interface}/statistics/{name}"
-            counters[f"nic_{name}"] = self.read_counter(
-                ["cat", path], lambda value: value.strip())
+        # 802.3x pause frames make the experiment closed-loop, so a nonzero
+        # delta invalidates a run rather than merely being recorded.
+        for pause in ("rx_pause", "tx_pause"):
+            counters[f"nic_{pause}"] = parse_counter(
+                captured["ethtool_stats"],
+                lambda text, key=pause: parse_ethtool_statistic(text, key))
+        for name in NIC_STATISTICS:
+            counters[f"nic_{name}"] = parse_counter(
+                captured[f"nic_{name}"], lambda value: value.strip())
         return counters
 
 
@@ -747,6 +776,43 @@ def probe(node: NodeController, command: Sequence[str],
         return {"value": None, "error": str(exc)}
 
 
+def parse_ethtool_statistic(text: str, name: str) -> int:
+    for line in text.splitlines():
+        key, separator, value = line.partition(":")
+        if separator and key.strip() == name:
+            return int(value.strip())
+    raise ValueError(f"ethtool -S did not report {name}")
+
+
+def split_counter_sections(sample: dict[str, Any],
+                           names: Sequence[str]) -> dict[str, dict[str, Any]]:
+    """Split one batched counter probe back into per-counter probe results."""
+    if sample["error"] is not None:
+        return {name: dict(sample) for name in names}
+    captured: dict[str, dict[str, Any]] = {
+        name: {"value": None, "error": f"counter section {name} is missing"}
+        for name in names}
+    current: str | None = None
+    lines: list[str] = []
+
+    def flush() -> None:
+        if current is not None:
+            captured[current] = {"value": "\n".join(lines), "error": None}
+
+    for line in sample["value"].splitlines():
+        if line.startswith(COUNTER_SECTION_PREFIX) and line.endswith(">>>"):
+            flush()
+            current = line[len(COUNTER_SECTION_PREFIX):-3]
+            lines = []
+            if current not in captured:
+                current = None
+            continue
+        if current is not None:
+            lines.append(line)
+    flush()
+    return captured
+
+
 def parse_counter(sample: dict[str, Any], parser) -> dict[str, Any]:
     if sample["error"] is not None:
         return {"value": None, "error": sample["error"]}
@@ -794,6 +860,7 @@ def run_state(node: NodeController, interface: str) -> dict[str, Any]:
         "throttled": ["sh", "-c", "vcgencmd get_throttled 2>/dev/null || echo unavailable"],
         "link": ["ethtool", interface],
         "offloads": ["ethtool", "-k", interface],
+        "pause": ["ethtool", "-a", interface],
         "clock_state": ["sh", "-c", "for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq; do test -r \"$f\" && printf '%s=' \"$f\" && cat \"$f\"; done"],
     }.items()}
 
@@ -1023,6 +1090,16 @@ def validity_reasons(sender: dict[str, Any], receiver: dict[str, Any],
         reasons.append("kernel socket backlog remained after the post-sender drain")
     if any(value.get("delta") is not None and value["delta"] < 0 for value in counters.values()):
         reasons.append("negative kernel or NIC counter delta")
+    # Any pause frame means the receiver's NIC back-pressured the sender at the
+    # link layer, so offered load stopped being an independent variable and
+    # receiver overload was hidden as sender-side queueing instead of loss.
+    if topology != "local_loopback":
+        for name in ("nic_rx_pause", "nic_tx_pause"):
+            delta = counters.get(name, {}).get("delta")
+            if delta is None:
+                reasons.append(f"{name} counter was unavailable")
+            elif delta != 0:
+                reasons.append(f"802.3x pause frames were exchanged ({name} delta {delta})")
     if topology != "local_loopback" and (throttled(before_state) or throttled(after_state)):
         reasons.append("thermal/power throttling flag was nonzero")
     if topology != "local_loopback" and sender_before_state and sender_after_state and (
@@ -1322,6 +1399,18 @@ def run_campaign(config: dict[str, Any], config_path: Path,
         planned_runs = len(qualification) + len(comparative)
         runs_started = time.monotonic()
 
+        def reconnect_nodes() -> None:
+            """Drop and rebuild both controllers after a transport failure."""
+            nonlocal receiver_node, sender_node
+            shared = sender_node is receiver_node
+            for node in (receiver_node,) if shared else (receiver_node, sender_node):
+                try:
+                    node.close()
+                except Exception:  # the connection is already broken
+                    pass
+            receiver_node = get_node(rx_host, global_config["user"])
+            sender_node = receiver_node if shared else get_node(tx_host, global_config["user"])
+
         def execute_with_progress(item: RunTuple, phase: str) -> dict[str, Any]:
             nonlocal completed_runs
             benchmark = config["benchmarks"][item.benchmark_index]
@@ -1333,13 +1422,25 @@ def run_campaign(config: dict[str, Any], config_path: Path,
             progress(f"START {position}/{planned_runs}: {label}; timed interval will be "
                      f"quiet for {format_duration(silence_seconds)}")
             run_started = time.monotonic()
-            try:
-                result = execute_run(item, config, session_id, session_dir,
-                                     receiver_node, sender_node, environment)
-            except Exception as exc:
-                progress(f"FAILED {position}/{planned_runs}: {label} after "
-                         f"{format_duration(time.monotonic() - run_started)}: {exc}")
-                raise
+            for attempt in range(1, MAX_RUN_ATTEMPTS + 1):
+                try:
+                    result = execute_run(item, config, session_id, session_dir,
+                                         receiver_node, sender_node, environment)
+                    break
+                except TRANSPORT_FAILURES as exc:
+                    if attempt == MAX_RUN_ATTEMPTS:
+                        progress(f"FAILED {position}/{planned_runs}: {label} after "
+                                 f"{format_duration(time.monotonic() - run_started)}: {exc}")
+                        raise
+                    progress(f"RETRY {position}/{planned_runs}: {label}; transport "
+                             f"failure on attempt {attempt}, reconnecting: {exc}")
+                    reconnect_nodes()
+                except Exception as exc:
+                    progress(f"FAILED {position}/{planned_runs}: {label} after "
+                             f"{format_duration(time.monotonic() - run_started)}: {exc}")
+                    raise
+            else:  # unreachable: the loop either breaks with a result or raises
+                raise RuntimeError(f"run {label} produced no result")
             completed_runs += 1
             metadata = result["metadata_object"]
             validity = metadata["validity"]

@@ -12,6 +12,9 @@ ROLE=${1:-}
 # eth0/wlan0, so pass the labels your own systems actually print.
 IRQ_PATTERN=${2:-eth0}
 SNAPSHOT=${3:-/var/tmp/net-latency-lab-tuning}
+# The benchmark link itself, for pause-frame control. Distinct from IRQ_PATTERN,
+# which matches driver labels in /proc/interrupts.
+BENCH_INTERFACE=${BENCH_INTERFACE:-eth0}
 NETWORK_CPU=${NETWORK_CPU:-0}
 HOUSEKEEPING_CPU=${HOUSEKEEPING_CPU:-1}
 WORKER_CPU=${WORKER_CPU:-2}
@@ -45,6 +48,9 @@ sysctl -n kernel.perf_event_paranoid > "${SNAPSHOT}/perf_event_paranoid"
 sysctl -n kernel.kptr_restrict > "${SNAPSHOT}/kptr_restrict"
 systemctl is-active irqbalance > "${SNAPSHOT}/irqbalance" 2>/dev/null || true
 iw dev wlan0 get power_save > "${SNAPSHOT}/wifi_power" 2>/dev/null || true
+sysctl -n kernel.sched_rt_runtime_us > "${SNAPSHOT}/sched_rt_runtime_us"
+printf '%s\n' "${BENCH_INTERFACE}" > "${SNAPSHOT}/bench_interface"
+ethtool -a "${BENCH_INTERFACE}" > "${SNAPSHOT}/pause" 2>/dev/null || true
 
 for governor in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
   [[ -r ${governor} ]] || continue
@@ -59,6 +65,22 @@ sysctl -w "net.core.wmem_max=${SOCKET_MAX}"
 sysctl -w kernel.perf_event_paranoid=-1
 sysctl -w kernel.kptr_restrict=0
 iw dev wlan0 set power_save off 2>/dev/null || true
+
+# A saturated SCHED_FIFO receiver is otherwise throttled for 50 ms of every
+# second by the default 950000/1000000 RT bandwidth limit. That penalises the
+# threaded receiver twice over, because its RX and worker threads are throttled
+# independently, which would show up as an architecture difference.
+sysctl -w kernel.sched_rt_runtime_us=-1
+
+# 802.3x pause frames make the experiment closed-loop: the receiver's NIC
+# back-pressures the sender at the link layer, so offered load stops being an
+# independent variable and receiver overload is hidden as sender-side queueing
+# delay instead of appearing as loss. Measured on this pair before disabling:
+# receiver tx_pause 7,209,416 exactly matching sender rx_pause, with receiver
+# rx_missed_errors 51,314.
+if ! ethtool -A "${BENCH_INTERFACE}" autoneg off rx off tx off 2>/dev/null; then
+  ethtool -A "${BENCH_INTERFACE}" rx off tx off
+fi
 
 awk -v names="${IRQ_PATTERN}|wlan" '$0 ~ names {gsub(":", "", $1); print $1}' /proc/interrupts |
 while read -r irq; do
@@ -83,9 +105,25 @@ if [[ ${ROLE} == receiver ]]; then
   done
 fi
 
+# Verify the locally configured setting. The negotiated state can legitimately
+# still read "on" until the link partner is configured too, so it is reported
+# rather than enforced here; the harness gates on zero pause-frame deltas.
+configured=$(ethtool -a "${BENCH_INTERFACE}" | awk '/^(RX|TX):/ {print $2}' | sort -u)
+if [[ ${configured} != "off" ]]; then
+  echo "Pause frames are still enabled on ${BENCH_INTERFACE}:" >&2
+  ethtool -a "${BENCH_INTERFACE}" >&2
+  exit 1
+fi
+if ethtool -a "${BENCH_INTERFACE}" | grep -q 'negotiated:[[:space:]]*on'; then
+  echo "Note: pause is still negotiated on ${BENCH_INTERFACE}; run this script on the link partner too." >&2
+fi
+[[ $(sysctl -n kernel.sched_rt_runtime_us) == "-1" ]] || {
+  echo "kernel.sched_rt_runtime_us did not take effect" >&2; exit 1; }
+
 cat > "${SNAPSHOT}/parameters" <<EOF
 role=${ROLE}
 irq_pattern=${IRQ_PATTERN}
+bench_interface=${BENCH_INTERFACE}
 network_cpu=${NETWORK_CPU}
 housekeeping_cpu=${HOUSEKEEPING_CPU}
 worker_cpu=${WORKER_CPU}

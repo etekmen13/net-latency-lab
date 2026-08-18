@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -18,15 +19,60 @@ DEFAULT_EVENTS = [
 ]
 
 
+REQUIRED_REPETITIONS = 5
+MAX_APPLICATION_LOSS_PCT = 0.1
+# Extra columns that must match within a repetition group.  Without them two
+# different workloads (for example a sampled and an unsampled run) that happen
+# to share receiver/batch/rate could be merged into one "five repetition" group.
+CONFIGURATION_KEYS = ("mode", "burst_size", "payload_size", "duration_seconds",
+                      "work_ns", "sample_every")
+
+
+def claim_population(per_run: pd.DataFrame, campaign: str = "raw") -> pd.DataFrame:
+    """Rows eligible for a claim: right campaign, physical topology, valid run.
+
+    ``topology`` is mandatory.  Loopback numbers must never reach the claim
+    gate, and silently skipping the filter when the column is absent would be
+    exactly the kind of quiet failure this gate exists to prevent.
+    """
+    if "topology" not in per_run.columns:
+        raise ValueError("per-run summary is missing topology; cannot exclude loopback data")
+    data = per_run[per_run.campaign == campaign]
+    data = data[data.topology != "local_loopback"]
+    if "run_valid" in data.columns:
+        data = data[data.run_valid.astype(bool)]
+    return data
+
+
 def sustainable_groups(per_run: pd.DataFrame, campaign: str = "raw") -> pd.DataFrame:
-    data = per_run[(per_run.campaign == campaign) & (per_run.run_valid == True)]  # noqa: E712
+    """Configurations whose full repetition set met the sustainability rule.
+
+    Also reports ``max_tested_rate_pps``/``saturated`` so callers can tell a
+    genuinely receiver-limited result from a sweep that simply stopped before
+    the receiver broke.  Without that distinction a sender-limited campaign
+    makes every receiver tie at the offered rate and any ratio between them is
+    measurement noise.
+    """
+    data = claim_population(per_run, campaign)
+    group_keys = ["receiver", "batch_size", "requested_rate_pps"]
+    group_keys += [key for key in CONFIGURATION_KEYS if key in data.columns]
+    highest_tested = data.groupby(["receiver", "batch_size"]).requested_rate_pps.max()
     rows = []
-    for key, group in data.groupby(["receiver", "batch_size", "requested_rate_pps"]):
-        if len(group) == 5 and bool(group.sustainable_run.all()):
-            rows.append({"receiver": key[0], "batch_size": int(key[1]),
-                         "requested_rate_pps": int(key[2]),
-                         "processed_pps_median": float(group.processed_pps.median()),
-                         "run_ids": "|".join(sorted(group.run_id.astype(str)))})
+    for key, group in data.groupby(group_keys):
+        receiver, batch_size, rate = key[0], int(key[1]), int(key[2])
+        if len(group) != REQUIRED_REPETITIONS or not bool(group.sustainable_run.all()):
+            continue
+        maximum_tested = int(highest_tested.loc[(receiver, batch_size)])
+        rows.append({"receiver": receiver, "batch_size": batch_size,
+                     "requested_rate_pps": rate,
+                     "repetitions": len(group),
+                     "processed_pps_median": float(group.processed_pps.median()),
+                     "processed_pps_min": float(group.processed_pps.min()),
+                     "processed_pps_max": float(group.processed_pps.max()),
+                     "application_loss_pct_max": float(group.application_loss_pct.max()),
+                     "max_tested_rate_pps": maximum_tested,
+                     "saturated": bool(rate < maximum_tested),
+                     "run_ids": "|".join(sorted(group.run_id.astype(str)))})
     return pd.DataFrame(rows)
 
 
@@ -55,30 +101,39 @@ def prepare_profile_config(session: Path, source_config: Path,
     selected = select_representatives(per_run)
     profile_rate = math.floor(.8 * min(int(row["requested_rate_pps"]) for row in selected))
     source = yaml.safe_load(source_config.read_text(encoding="utf-8"))
-    config = {"global": source["global"], "benchmarks": []}
-    config["global"]["runtime"]["repetitions"] = 3
+    if not isinstance(source, dict) or not isinstance(source.get("global"), dict):
+        raise ValueError(f"Source config has no global section: {source_config}")
+    config = {"global": deepcopy(source["global"]), "benchmarks": []}
+    config["global"].setdefault("runtime", {})["repetitions"] = 3
     config["global"]["local_data_dir"] = "results/sessions"
     for row in selected:
         receiver = str(row["receiver"])
         binary = {"baseline": "receiver_baseline", "batched": "receiver_batched",
                   "threaded": "receiver_threaded"}[receiver]
-        common = {
-            "receiver": {"binary": binary, "batch_sizes": [int(row["batch_size"])],
-                         "work_ns": 0, "sample_every": 0},
-            "sender": {"mode": "steady", "duration_seconds": 30,
-                       "rates_pps": [profile_rate], "burst_sizes": [1],
-                       "payload_size": 64},
-        }
+        def common() -> dict[str, Any]:
+            # Fresh objects per benchmark: sharing one dict makes yaml.safe_dump
+            # emit anchors/aliases, so the published config snapshot no longer
+            # reads as a literal, independently checkable benchmark list.
+            return {
+                "receiver": {"binary": binary, "batch_sizes": [int(row["batch_size"])],
+                             "work_ns": 0, "sample_every": 0},
+                "sender": {"mode": "steady", "duration_seconds": 30,
+                           "rates_pps": [profile_rate], "burst_sizes": [1],
+                           "payload_size": 64},
+            }
         config["benchmarks"].append({"name": f"profile_stat_{receiver}",
             "campaign": "profile", "repetitions": 3, "profile": "stat",
-            "perf_events": DEFAULT_EVENTS, **common})
+            "perf_events": list(DEFAULT_EVENTS), **common()})
         config["benchmarks"].append({"name": f"profile_record_{receiver}",
-            "campaign": "profile", "repetitions": 1, "profile": "record", **common})
+            "campaign": "profile", "repetitions": 1, "profile": "record", **common()})
     output.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     plan = {"schema_version": 1, "source_session": str(session),
             "selection_rule": "highest median processed PPS among sustainable batches; within 2%, smaller batch",
             "load_rule": "80% of the lowest selected sustainable requested rate",
-            "profile_rate_pps": profile_rate, "selected": selected}
+            "profile_rate_pps": profile_rate,
+            "saturated": {str(row["receiver"]): bool(row.get("saturated", False))
+                          for row in selected},
+            "selected": selected}
     output.with_suffix(".plan.json").write_text(json.dumps(plan, indent=2) + "\n",
                                                 encoding="utf-8")
     return output
@@ -247,22 +302,35 @@ def summarize_profiles(session: Path) -> Path:
             raise ValueError(f"{metadata['run_id']} requires rerun due to severe multiplexing: {', '.join(severely_multiplexed)}")
         processed = int(metadata["receiver_stats"]["unique_processed_packets"])
         elapsed = float(metadata["sender_stats"]["elapsed_seconds"])
-        recv_syscalls = sum(counters.get(name) or 0.0 for name in
-                            ("syscalls:sys_enter_recvfrom", "syscalls:sys_enter_recvmmsg"))
+        unavailable = sorted(event for event in DEFAULT_EVENTS
+                             if event in counters and counters[event] is None)
+        missing = sorted(event for event in DEFAULT_EVENTS if event not in counters)
+        receive_events = ("syscalls:sys_enter_recvfrom", "syscalls:sys_enter_recvmmsg")
+        receive_values = [counters.get(name) for name in receive_events]
+        # An unavailable counter is unknown, not zero.  Summing it as zero
+        # understates syscalls per packet and would fabricate support for the
+        # "fewer receive syscalls" mechanism.
+        recv_syscalls = (None if any(value is None for value in receive_values)
+                         else sum(receive_values))
         def per_packet(event: str) -> float | None:
             value = counters.get(event)
             return value / processed if value is not None and processed else None
         cycles, instructions = counters.get("cycles"), counters.get("instructions")
+        context_switches = counters.get("context-switches")
         rows.append({
             "run_id": metadata["run_id"], "receiver": metadata["run"]["receiver_variant"],
             "batch_size": metadata["run"]["batch_size"], "processed_packets": processed,
             "cycles_per_packet": per_packet("cycles"),
             "instructions_per_packet": per_packet("instructions"),
             "cache_misses_per_packet": per_packet("cache-misses"),
-            "receive_syscalls_per_packet": recv_syscalls / processed if processed and recv_syscalls else None,
-            "context_switches_per_second": (counters.get("context-switches") or 0.0) / elapsed if elapsed else None,
+            "receive_syscalls_per_packet": (recv_syscalls / processed
+                                            if recv_syscalls is not None and processed else None),
+            "context_switches_per_second": (context_switches / elapsed
+                                            if context_switches is not None and elapsed else None),
             "context_switches_per_packet": per_packet("context-switches"),
             "ipc": instructions / cycles if instructions is not None and cycles else None,
+            "unavailable_events": "; ".join(unavailable),
+            "absent_events": "; ".join(missing),
             **{f"event_{event}": counters.get(event) for event in DEFAULT_EVENTS},
         })
     if not rows:

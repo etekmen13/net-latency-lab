@@ -119,29 +119,40 @@ def sequence_statistics(sequence: pd.Series) -> dict[str, int]:
     return {"sequence_gap_loss": gaps, "duplicates": duplicates, "reordered": reordered}
 
 
+def _drift_result(result: pd.DataFrame, corrected: pd.Series, slope: float,
+                  applied: bool) -> tuple[pd.DataFrame, float]:
+    """Single exit point so every drift path returns the same columns/shape."""
+    result["latency_corrected_us"] = corrected
+    result["jitter_us"] = result["latency_corrected_us"].diff().abs()
+    result["clock_correction_applied"] = applied
+    return result, float(slope)
+
+
 def remove_clock_drift(df: pd.DataFrame, window_size: int = 1000) -> tuple[pd.DataFrame, float]:
     """Estimate linear sender/receiver clock skew and return ``(frame, slope)``.
 
     The slope is microseconds of apparent latency change per second.  Runs with
     fewer than ``window_size`` records are deliberately left uncorrected and
-    marked with ``clock_correction_applied=False``.
+    marked with ``clock_correction_applied=False``.  Every return path goes
+    through :func:`_drift_result`, so the tuple shape and the added columns
+    (``latency_corrected_us``, ``jitter_us``, ``clock_correction_applied``) are
+    identical regardless of which branch is taken.
     """
     if "receive_latency_us" not in df.columns:
         raise ValueError("Dataframe is missing receive_latency_us")
+    if "rx_ns" not in df.columns:
+        raise ValueError("Dataframe is missing rx_ns")
     result = df.copy()
     raw = pd.to_numeric(result["receive_latency_us"], errors="raise")
+    if raw.isna().any():
+        raise ValueError("receive_latency_us contains missing values")
     if len(result) < window_size:
-        result["latency_corrected_us"] = raw
-        result["jitter_us"] = result["latency_corrected_us"].diff().abs()
-        result["clock_correction_applied"] = False
-        return result, 0.0
+        return _drift_result(result, raw, 0.0, False)
 
-    elapsed = (result["rx_ns"] - result["rx_ns"].iloc[0]) / 1e9
-    if float(elapsed.max()) <= 0.0:
-        result["latency_corrected_us"] = raw
-        result["jitter_us"] = result["latency_corrected_us"].diff().abs()
-        result["clock_correction_applied"] = False
-        return result, 0.0
+    rx_ns = pd.to_numeric(result["rx_ns"], errors="raise").astype("float64")
+    elapsed = (rx_ns - rx_ns.iloc[0]) / 1e9
+    if not np.isfinite(float(elapsed.max())) or float(elapsed.max()) <= 0.0:
+        return _drift_result(result, raw, 0.0, False)
 
     sample_count = min(20, len(result))
     x_minima: list[float] = []
@@ -151,11 +162,13 @@ def remove_clock_drift(df: pd.DataFrame, window_size: int = 1000) -> tuple[pd.Da
         index = int(indices[int(np.argmin(values.to_numpy()))])
         x_minima.append(float(elapsed.iloc[index]))
         y_minima.append(float(raw.iloc[index]))
+    if len(set(x_minima)) < 2:
+        return _drift_result(result, raw, 0.0, False)
     slope, _intercept = np.polyfit(x_minima, y_minima, 1)
-    result["latency_corrected_us"] = raw - float(slope) * elapsed
-    result["jitter_us"] = result["latency_corrected_us"].diff().abs()
-    result["clock_correction_applied"] = True
-    return result, float(slope)
+    slope = float(slope)
+    if not np.isfinite(slope):
+        return _drift_result(result, raw, 0.0, False)
+    return _drift_result(result, raw - slope * elapsed, slope, True)
 
 
 def require_corrected_latency(df: pd.DataFrame) -> None:

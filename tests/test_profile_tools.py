@@ -8,24 +8,37 @@ import pandas as pd
 import pytest
 
 from profile_tools import (parse_perf_stat, select_representatives,
+                           summarize_profiles, sustainable_groups,
                            validate_profile_session)
 
+CONFIGURATIONS = [
+    ("baseline", 1, 100_000, 99_900),
+    ("batched", 4, 200_000, 198_000),
+    ("batched", 8, 200_000, 200_000),  # within 2%; smaller batch must win
+    ("threaded", 16, 300_000, 299_000),
+]
 
-def profile_fixture() -> pd.DataFrame:
+
+def _run(receiver, batch, requested, processed, repetition, *, sustainable=True,
+         topology="distributed_ethernet", loss=0.0):
+    return {"campaign": "raw", "topology": topology, "receiver": receiver,
+            "batch_size": batch, "requested_rate_pps": requested,
+            "processed_pps": processed + repetition,
+            "application_loss_pct": loss,
+            "run_valid": True, "sustainable_run": sustainable,
+            "run_id": f"{receiver}-{batch}-{requested}-{repetition}"}
+
+
+def profile_fixture(saturated: bool = True) -> pd.DataFrame:
     rows = []
-    configurations = [
-        ("baseline", 1, 100_000, 99_900),
-        ("batched", 4, 200_000, 198_000),
-        ("batched", 8, 200_000, 200_000),  # within 2%; smaller batch must win
-        ("threaded", 16, 300_000, 299_000),
-    ]
-    for receiver, batch, requested, processed in configurations:
+    for receiver, batch, requested, processed in CONFIGURATIONS:
         for repetition in range(1, 6):
-            rows.append({"campaign": "raw", "receiver": receiver,
-                         "batch_size": batch, "requested_rate_pps": requested,
-                         "processed_pps": processed + repetition,
-                         "run_valid": True, "sustainable_run": True,
-                         "run_id": f"{receiver}-{batch}-{repetition}"})
+            rows.append(_run(receiver, batch, requested, processed, repetition))
+            if saturated:
+                # A strictly higher offered rate that the receiver failed: this
+                # is what makes the selected rate receiver-limited evidence.
+                rows.append(_run(receiver, batch, requested * 2, processed,
+                                 repetition, sustainable=False, loss=5.0))
     return pd.DataFrame(rows)
 
 
@@ -35,6 +48,35 @@ def test_representative_selection_uses_five_runs_and_two_percent_tiebreak():
     assert selected["batched"]["batch_size"] == 4
     assert selected["threaded"]["batch_size"] == 16
     assert len(selected["batched"]["run_ids"].split("|")) == 5
+
+
+def test_sustainable_groups_reject_loopback_rows():
+    frame = profile_fixture()
+    frame.loc[frame.receiver == "baseline", "topology"] = "local_loopback"
+    assert sustainable_groups(frame).receiver.unique().tolist() == ["batched", "threaded"]
+
+
+def test_sustainable_groups_require_topology_column():
+    frame = profile_fixture().drop(columns=["topology"])
+    with pytest.raises(ValueError, match="topology"):
+        sustainable_groups(frame)
+
+
+def test_sustainable_groups_mark_unsaturated_sweeps():
+    saturated = sustainable_groups(profile_fixture(saturated=True))
+    assert saturated.saturated.all()
+    # A sweep whose highest offered rate still passed never found the knee.
+    unsaturated = sustainable_groups(profile_fixture(saturated=False))
+    assert not unsaturated.saturated.any()
+
+
+def test_sustainable_groups_do_not_merge_different_sample_rates():
+    frame = profile_fixture(saturated=False)
+    frame["sample_every"] = 0
+    # Three unsampled plus two sampled runs must not look like five repetitions.
+    mask = (frame.receiver == "baseline") & (frame.run_id.str.endswith(("-4", "-5")))
+    frame.loc[mask, "sample_every"] = 100
+    assert sustainable_groups(frame)[lambda d: d.receiver == "baseline"].empty
 
 
 def test_perf_parser_preserves_unsupported_events(tmp_path: Path):
@@ -155,3 +197,54 @@ def test_validate_rejects_missing_record_report(tmp_path: Path):
     mutate_metadata(session, 9, remove_report)
     with pytest.raises(ValueError, match="Missing or empty perf record report"):
         validate_profile_session(session)
+
+
+def stat_session(tmp_path: Path, perf_csv: str) -> Path:
+    session = tmp_path / "stat_session"
+    run_dir = session / "profile_stat_batched"
+    run_dir.mkdir(parents=True)
+    (run_dir / "run_perf_stat.csv").write_text(perf_csv)
+    (run_dir / "run_meta.json").write_text(json.dumps({
+        "run_id": "run", "run": {"receiver_variant": "batched", "batch_size": 8},
+        "receiver_stats": {"unique_processed_packets": 1000},
+        "sender_stats": {"elapsed_seconds": 10.0},
+        "profile": {"mode": "stat", "artifact": "run_perf_stat.csv"},
+    }))
+    return session
+
+
+COMPLETE_PERF_CSV = (
+    "1000,,task-clock,100,100.00\n"
+    "20000,,cycles,100,100.00\n"
+    "30000,,instructions,100,100.00\n"
+    "1,,branches,100,100.00\n"
+    "1,,branch-misses,100,100.00\n"
+    "1,,cache-references,100,100.00\n"
+    "1,,cache-misses,100,100.00\n"
+    "500,,context-switches,100,100.00\n"
+    "0,,cpu-migrations,100,100.00\n"
+    "1,,page-faults,100,100.00\n"
+    "0,,syscalls:sys_enter_recvfrom,100,100.00\n"
+    "125,,syscalls:sys_enter_recvmmsg,100,100.00\n")
+
+
+def test_summarize_keeps_a_real_zero_receive_counter(tmp_path: Path):
+    """recvfrom == 0 is a measurement, not a missing value."""
+    summary = pd.read_csv(summarize_profiles(stat_session(tmp_path, COMPLETE_PERF_CSV)))
+    row = summary.iloc[0]
+    assert row.receive_syscalls_per_packet == pytest.approx(0.125)
+    assert row.context_switches_per_second == pytest.approx(50.0)
+    assert pd.isna(row.unavailable_events)
+
+
+def test_summarize_never_sums_an_unavailable_counter_as_zero(tmp_path: Path):
+    perf_csv = COMPLETE_PERF_CSV.replace(
+        "0,,syscalls:sys_enter_recvfrom,100,100.00",
+        "<not supported>,,syscalls:sys_enter_recvfrom,0,0.00").replace(
+        "500,,context-switches,100,100.00",
+        "<not counted>,,context-switches,0,0.00")
+    summary = pd.read_csv(summarize_profiles(stat_session(tmp_path, perf_csv)))
+    row = summary.iloc[0]
+    assert pd.isna(row.receive_syscalls_per_packet)
+    assert pd.isna(row.context_switches_per_second)
+    assert row.unavailable_events == "context-switches; syscalls:sys_enter_recvfrom"

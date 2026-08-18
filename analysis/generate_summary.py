@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import math
 import os
 import sys
 from pathlib import Path
@@ -67,13 +68,32 @@ def linear_quantile(series: pd.Series, q: float) -> float:
     return float(series.quantile(q, interpolation=QUANTILE_METHOD))
 
 
+def minimum_samples_for(q: float) -> int:
+    """Smallest sample count for which ``q`` is not simply the maximum.
+
+    With the type-7/"linear" rule the quantile sits at position ``q*(n-1)``.
+    Unless at least ``1/(1-q)`` observations are present, no observation is
+    expected above the quantile and the reported value degenerates to the
+    sample maximum, which must not be published as "p99.9".
+    """
+    return int(math.ceil(1.0 / (1.0 - q)))
+
+
+def tail_quantile(series: pd.Series, q: float) -> float | None:
+    """Linear quantile, or ``None`` when the sample cannot support the tail."""
+    if len(series) < minimum_samples_for(q):
+        return None
+    return linear_quantile(series, q)
+
+
 def _read_metadata(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
         return json.load(handle) if path.suffix == ".json" else yaml.safe_load(handle)
 
 
 def _latency_fields(frame: pd.DataFrame) -> dict[str, Any]:
-    names = {
+    names: dict[str, Any] = {
+        "latency_sample_count": 0,
         "clock_drift_slope_us_per_s": None, "clock_correction_applied": False,
         "receive_latency_min_us": None, "receive_latency_mean_us": None,
         "receive_latency_p50_us": None, "receive_latency_p99_us": None,
@@ -89,24 +109,25 @@ def _latency_fields(frame: pd.DataFrame) -> dict[str, Any]:
     require_corrected_latency(clean)
     latency = clean["latency_corrected_us"]
     names.update({
+        "latency_sample_count": int(len(clean)),
         "clock_drift_slope_us_per_s": slope,
         "clock_correction_applied": bool(clean["clock_correction_applied"].iloc[0]),
         "receive_latency_min_us": float(latency.min()),
         "receive_latency_mean_us": float(latency.mean()),
-        "receive_latency_p50_us": linear_quantile(latency, .5),
-        "receive_latency_p99_us": linear_quantile(latency, .99),
-        "receive_latency_p999_us": linear_quantile(latency, .999),
+        "receive_latency_p50_us": tail_quantile(latency, .5),
+        "receive_latency_p99_us": tail_quantile(latency, .99),
+        "receive_latency_p999_us": tail_quantile(latency, .999),
         "receive_latency_max_us": float(latency.max()),
         "receive_latency_std_us": float(latency.std()),
-        "jitter_p99_us": linear_quantile(clean["jitter_us"].dropna(), .99) if len(clean) > 1 else 0.0,
+        "jitter_p99_us": tail_quantile(clean["jitter_us"].dropna(), .99),
     })
     for source, prefix in (("application_queue_delay_us", "queue_delay"),
                            ("processing_time_us", "processing_time"),
                            ("total_application_latency_us", "total_latency")):
         values = clean[source]
-        names[f"{prefix}_p50_us"] = linear_quantile(values, .5)
-        names[f"{prefix}_p99_us"] = linear_quantile(values, .99)
-        names[f"{prefix}_p999_us"] = linear_quantile(values, .999)
+        names[f"{prefix}_p50_us"] = tail_quantile(values, .5)
+        names[f"{prefix}_p99_us"] = tail_quantile(values, .99)
+        names[f"{prefix}_p999_us"] = tail_quantile(values, .999)
     return names
 
 
@@ -160,8 +181,14 @@ def summarize_run(metadata: dict[str, Any], frame: pd.DataFrame,
         "duration_seconds": float(run["duration_seconds"]), "work_ns": int(run["work_ns"]),
         "sample_every": int(run.get("sample_every", 1)),
     }
+    # A run only qualifies when it actually carried traffic.  Without the
+    # positive-traffic guards a zero-packet or zero-rate run scores
+    # offered_pps == 0 >= 0.99 * 0 and application_loss_pct == 0, i.e. missing
+    # data would silently pass the sustainability gate.
     row["sustainable_run"] = bool(
         row["run_valid"] and row["send_failures"] == 0 and
+        row["requested_rate_pps"] > 0 and row["send_successes"] > 0 and
+        row["processed_packets"] > 0 and row["sender_runtime_seconds"] > 0 and
         row["offered_pps"] >= .99 * row["requested_rate_pps"] and
         0 <= row["application_loss_pct"] <= .1)
     row.update(_latency_fields(frame))
@@ -186,11 +213,18 @@ def aggregate_repetitions(per_run: pd.DataFrame) -> pd.DataFrame:
             row["all_repetitions_sustainable"] = bool(group["sustainable_run"].all())
         if "run_valid" in group:
             row["all_repetitions_valid"] = bool(group["run_valid"].all())
+        incomplete: list[str] = []
         for column in numeric:
             values = group[column].dropna()
+            if len(values) != len(group):
+                # Aggregating over fewer repetitions than the group contains is
+                # legitimate (throughput runs carry no latency trace) but it
+                # must never be invisible in the published aggregate.
+                incomplete.append(f"{column}:{len(values)}/{len(group)}")
             row[f"{column}_median"] = linear_quantile(values, .5) if not values.empty else None
             row[f"{column}_q25"] = linear_quantile(values, .25) if not values.empty else None
             row[f"{column}_q75"] = linear_quantile(values, .75) if not values.empty else None
+        row["metrics_with_missing_repetitions"] = "; ".join(sorted(incomplete))
         rows.append(row)
     return pd.DataFrame(rows)
 

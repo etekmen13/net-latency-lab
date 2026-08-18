@@ -12,6 +12,7 @@ import pandas as pd
 
 from generate_claim_evidence import generate as generate_claims
 from plot_paper_figs import figure_profiles, figure_throughput
+from profile_tools import validate_profile_session
 
 
 def sha256(path: Path) -> str:
@@ -27,11 +28,15 @@ def publish(measurement: Path, profile: Path, output: Path) -> Path:
     physical = runs[runs.topology != "local_loopback"]
     if physical.empty:
         raise ValueError("Publication requires physical Ethernet data")
+    for campaign in ("raw", "workload_10us"):
+        if physical[physical.campaign == campaign].empty:
+            raise ValueError(f"Physical campaign {campaign!r} has no runs")
     comparison = physical[physical.campaign.isin(["raw", "workload_10us"])]
     grouped = comparison.groupby(["campaign", "receiver", "batch_size", "requested_rate_pps"])
     bad_repetitions = [str(key) for key, group in grouped if len(group) != 5]
     if bad_repetitions:
         raise ValueError("Every comparative tuple must have five repetitions: " + ", ".join(bad_repetitions))
+    validate_profile_session(profile)
     profiles = pd.read_csv(profile / "profile_summary.csv")
     if set(profiles.receiver) != {"baseline", "batched", "threaded"}:
         raise ValueError("Profiles must cover baseline, batched, and threaded receivers")

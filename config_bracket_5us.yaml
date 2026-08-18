@@ -1,0 +1,92 @@
+# Stage D0 bracket at the W* = 5 us per-packet processing budget.
+#
+# This is NOT a claim campaign: three repetitions and a coarse rate grid, used
+# only to locate each receiver's zero-loss knee before the fine five-repetition
+# grid is collected. Its campaign name is deliberately distinct from the claim
+# campaign's so the two can never be pooled by the analysis.
+#
+# It is also the "before" half of the SPSC optimisation delta: it runs against
+# the queue as it stands, so that the same grid re-run after the optimisation
+# measures the change rather than an absolute.
+#
+# Rate grids come from the service-rate model 1/knee = r + W, with r measured in
+# overload as 1.66 us (recvfrom) and 1.03 us (recvmmsg b64). Predicted knees at
+# W = 5 us: baseline 150k, batched 166k, threaded 189k.
+global:
+  topology: distributed_ethernet
+  benchmark_commit: 3ea425acff17eda35cd60577bf37ff7d0ccc103c
+  remote_project_root: /root/net-latency-lab
+  local_project_root: .
+  local_data_dir: results/sessions
+  user: root
+  metadata_collection: true
+  tuning_state: pi4-predeclared-v2
+  nodes:
+    receiver: {management_host: nll-receiver, benchmark_ip: 192.168.50.2, interface: eth0}
+    sender: {management_host: nll-sender, benchmark_ip: 192.168.50.1, interface: eth0}
+  runtime:
+    repetitions: 3
+    shuffle_seed: 477
+    port: 49200
+    receiver_startup_seconds: 0.5
+    post_sender_drain_seconds: 1.0
+    shutdown_timeout_seconds: 30
+    receive_buffer_bytes: 4194304
+    send_buffer_bytes: 4194304
+    receiver_cpu: 3
+    worker_cpu: 2
+    sender_cpu: 3
+    scheduler: fifo
+    priority: 90
+    privilege_prefix: []
+    build_preset: pi4-release
+    build_subdir: pi4-release
+
+# The sender is single-threaded in every stage of this protocol. Multiple sender
+# workers allocate sequence blocks from one shared atomic and emit them from
+# separate sockets, which reorders 44-59% of packets even at rates with zero
+# loss, and cannot satisfy the 0.01% reordering gate. batch_window_us is 50 so
+# the adaptive batch clears the 8-message point where sendmmsg amortisation
+# saturates, without making arrivals burstier than necessary.
+benchmarks:
+  - name: bracket_baseline_w5
+    campaign: bracket_5us
+    contributes_to_claim_measurements: false
+    receiver: {binary: receiver_baseline, batch_sizes: [1], work_ns: 5000, sample_every: 0}
+    sender:
+      mode: steady
+      duration_seconds: 20
+      rates_pps: [110000, 125000, 140000, 150000, 160000, 175000, 190000]
+      burst_sizes: [1]
+      payload_size: 64
+      send_batch_max: 64
+      batch_window_us: 50
+      threads: 1
+
+  - name: bracket_batched_w5
+    campaign: bracket_5us
+    contributes_to_claim_measurements: false
+    receiver: {binary: receiver_batched, batch_sizes: [64], work_ns: 5000, sample_every: 0}
+    sender:
+      mode: steady
+      duration_seconds: 20
+      rates_pps: [130000, 145000, 160000, 170000, 180000, 195000, 210000]
+      burst_sizes: [1]
+      payload_size: 64
+      send_batch_max: 64
+      batch_window_us: 50
+      threads: 1
+
+  - name: bracket_threaded_w5
+    campaign: bracket_5us
+    contributes_to_claim_measurements: false
+    receiver: {binary: receiver_threaded, batch_sizes: [64], work_ns: 5000, sample_every: 0}
+    sender:
+      mode: steady
+      duration_seconds: 20
+      rates_pps: [110000, 130000, 150000, 170000, 190000, 210000, 230000]
+      burst_sizes: [1]
+      payload_size: 64
+      send_batch_max: 64
+      batch_window_us: 50
+      threads: 1

@@ -168,6 +168,42 @@ def test_sustainable_run_rejects_a_run_that_carried_no_traffic():
     assert row["sustainable_run"] is False
 
 
+def test_window_rates_are_measured_over_the_receiver_monotonic_windows():
+    """processed_pps credits drained packets to the sender's interval; the
+    window rate does not, which is what the service-rate model needs."""
+    metadata = sustainable_metadata()
+    # The receiver processed all 1000 packets, but took 2 s to do it because it
+    # kept draining for a second after the 1 s sender interval ended.
+    metadata["receiver_stats"].update(
+        first_receive_mono_ns=1_000_000_000, last_receive_mono_ns=2_000_000_000,
+        first_processing_mono_ns=1_000_000_000, last_processing_mono_ns=3_000_000_000,
+        receive_syscalls=25, valid_packets=1000)
+    row = summarize_run(metadata, pd.DataFrame(), Path("t.bin"))
+    assert row["processed_pps"] == pytest.approx(1000.0)      # sender interval
+    assert row["processing_window_pps"] == pytest.approx(500.0)  # true 2 s window
+    assert row["receive_window_pps"] == pytest.approx(1000.0)
+    assert row["packets_per_receive_syscall"] == pytest.approx(40.0)
+
+
+def test_window_rates_are_none_when_the_window_is_unusable():
+    metadata = sustainable_metadata()
+    metadata["receiver_stats"].update(first_receive_mono_ns=0, last_receive_mono_ns=0,
+                                      receive_syscalls=0)
+    row = summarize_run(metadata, pd.DataFrame(), Path("t.bin"))
+    assert row["receive_window_pps"] is None
+    assert row["packets_per_receive_syscall"] is None
+
+
+def test_zero_loss_is_reported_separately_from_the_tenth_of_a_percent_rule():
+    """0.1% is 4500 packets at 150 kpps over 30 s, so it is not "zero loss"."""
+    metadata = sustainable_metadata()
+    assert summarize_run(metadata, pd.DataFrame(), Path("t.bin"))["zero_loss_run"] is True
+    metadata["receiver_stats"].update(processed_packets=999, spsc_overflow=1)
+    row = summarize_run(metadata, pd.DataFrame(), Path("t.bin"))
+    assert row["sustainable_run"] is True   # 0.1% still passes the campaign rule
+    assert row["zero_loss_run"] is False    # but it is not zero
+
+
 def test_sustainable_run_rejects_loss_above_the_tenth_of_a_percent_rule():
     metadata = sustainable_metadata()
     metadata["receiver_stats"].update(processed_packets=998, spsc_overflow=2)

@@ -131,6 +131,16 @@ def _latency_fields(frame: pd.DataFrame) -> dict[str, Any]:
     return names
 
 
+def _window_rate(first_ns: Any, last_ns: Any, packets: int) -> float | None:
+    """Packets per second over a monotonic window, or None if it is unusable."""
+    if first_ns is None or last_ns is None:
+        return None
+    span = int(last_ns) - int(first_ns)
+    if span <= 0:
+        return None
+    return packets * 1e9 / span
+
+
 def summarize_run(metadata: dict[str, Any], frame: pd.DataFrame,
                   trace_path: Path) -> dict[str, Any]:
     validate_metadata(metadata)
@@ -181,6 +191,32 @@ def summarize_run(metadata: dict[str, Any], frame: pd.DataFrame,
         "duration_seconds": float(run["duration_seconds"]), "work_ns": int(run["work_ns"]),
         "sample_every": int(run.get("sample_every", 1)),
     }
+    # Service rate measured over the receiver's own monotonic windows. The
+    # *_pps columns above divide by the sender's elapsed time, but the receiver
+    # keeps draining through the post-sender drain window, so for the threaded
+    # variant up to a full queue depth of packets is credited to a period it did
+    # not occur in -- 4096 packets is 0.09% of a 4.5M-packet run, against a 0.1%
+    # loss gate. These columns are drain-immune and need no clock synchronisation.
+    row["receive_window_pps"] = _window_rate(
+        receiver.get("first_receive_mono_ns"), receiver.get("last_receive_mono_ns"), received)
+    row["processing_window_pps"] = _window_rate(
+        receiver.get("first_processing_mono_ns"), receiver.get("last_processing_mono_ns"), processed)
+    # Direct evidence of the syscall-amortisation mechanism, rather than an
+    # inference from cycles.
+    syscalls = int(receiver.get("receive_syscalls", 0))
+    row["packets_per_receive_syscall"] = (
+        float(receiver.get("valid_packets", received)) / syscalls if syscalls else None)
+    row["truncated_packets"] = int(receiver.get("truncated_packets", 0))
+    row["receive_out_of_window"] = int(receiver.get("receive_out_of_window", 0))
+    for name in ("nic_rx_pause", "nic_tx_pause"):
+        row[f"{name}_delta"] = metadata["counters"].get(name, {}).get("delta")
+    lateness = sender.get("pacing_lateness_ns") or {}
+    row["pacing_lateness_p50_ns"] = lateness.get("p50")
+    row["pacing_lateness_p99_ns"] = lateness.get("p99")
+    # The sustainability rule allows 0.1% loss, which is 4500 packets on a 30 s
+    # run at 150 kpps. Record the strictly stronger condition alongside it so a
+    # "zero loss" claim can mean exactly that.
+    row["zero_loss_run"] = bool(application_loss == 0 and ingress_loss == 0)
     # A run only qualifies when it actually carried traffic.  Without the
     # positive-traffic guards a zero-packet or zero-rate run scores
     # offered_pps == 0 >= 0.99 * 0 and application_loss_pct == 0, i.e. missing

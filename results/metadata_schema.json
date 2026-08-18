@@ -5,14 +5,14 @@
   "required": ["schema_version", "run_id", "repetition_id", "topology", "run", "sender_stats", "receiver_stats", "packet_accounting", "counters", "run_environment", "validity", "environment"],
   "properties": {
     "schema_version": {"const": 2},
-    "topology": {"enum": ["local_loopback", "distributed_ethernet"]},
+    "topology": {"enum": ["local_loopback", "distributed_ethernet", "external_generator"]},
     "run": {
       "type": "object",
-      "required": ["campaign", "receiver_variant", "requested_rate_pps", "duration_seconds", "payload_size", "batch_size", "work_ns", "sample_every", "post_sender_drain_seconds"]
+      "required": ["campaign", "receiver_variant", "requested_rate_pps", "duration_seconds", "payload_size", "send_batch_max", "batch_window_us", "sender_threads", "pacing_trace_enabled", "batch_size", "work_ns", "sample_every", "post_sender_drain_seconds"]
     },
     "sender_stats": {
       "type": "object",
-      "required": ["attempted_sends", "successful_sends", "failed_sends", "elapsed_seconds", "achieved_successful_send_pps", "requested_socket_buffer_bytes", "observed_socket_buffer_bytes"]
+      "required": ["attempted_sends", "successful_sends", "failed_sends", "syscall_count", "partial_returns", "error_returns", "elapsed_seconds", "achieved_successful_send_pps", "send_batch_max", "batch_window_us", "threads", "thread_outcomes", "requested_socket_buffer_bytes", "observed_socket_buffer_bytes"]
     },
     "receiver_stats": {
       "type": "object",

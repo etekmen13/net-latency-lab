@@ -8,8 +8,10 @@ after the declared sender duration plus drain interval has elapsed.
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
+import math
 import os
 import random
 import re
@@ -164,9 +166,18 @@ class NodeController:
             return {"value": None, "error": str(exc)}
 
     def snapshot_counters(self, interface: str) -> dict[str, dict[str, Any]]:
-        counters = {"udp_rcvbuf_errors": self.read_counter(
-            ["cat", "/proc/net/snmp"], parse_udp_rcvbuf_errors)}
-        for name in ("rx_dropped", "rx_errors", "rx_missed_errors"):
+        counters = {
+            "udp_rcvbuf_errors": self.read_counter(
+                ["cat", "/proc/net/snmp"], parse_udp_rcvbuf_errors),
+            "udp_sndbuf_errors": self.read_counter(
+                ["cat", "/proc/net/snmp"], parse_udp_sndbuf_errors),
+            "udp_socket_drops": self.read_counter(
+                ["cat", "/proc/net/udp"], parse_udp_socket_drops),
+            "qdisc_drops": self.read_counter(
+                ["tc", "-s", "qdisc", "show", "dev", interface], parse_qdisc_drops),
+        }
+        for name in ("rx_dropped", "rx_errors", "rx_missed_errors", "rx_crc_errors",
+                     "tx_dropped", "tx_errors", "tx_carrier_errors"):
             path = f"/sys/class/net/{interface}/statistics/{name}"
             counters[f"nic_{name}"] = self.read_counter(
                 ["cat", path], lambda value: value.strip())
@@ -417,13 +428,33 @@ def require_nonempty_file(path: Path, description: str) -> None:
 
 
 def parse_udp_rcvbuf_errors(text: str) -> int:
+    return parse_udp_named_counter(text, "RcvbufErrors")
+
+
+def parse_udp_sndbuf_errors(text: str) -> int:
+    return parse_udp_named_counter(text, "SndbufErrors")
+
+
+def parse_udp_named_counter(text: str, counter: str) -> int:
     lines = [line.split() for line in text.splitlines() if line.startswith("Udp:")]
     if len(lines) < 2:
         raise ValueError("/proc/net/snmp has no UDP header/value pair")
     headers, values = lines[-2], lines[-1]
-    if "RcvbufErrors" not in headers:
-        raise ValueError("UDP RcvbufErrors is unavailable")
-    return int(values[headers.index("RcvbufErrors")])
+    if counter not in headers:
+        raise ValueError(f"UDP {counter} is unavailable")
+    return int(values[headers.index(counter)])
+
+
+def parse_udp_socket_drops(text: str) -> int:
+    lines = [line.split() for line in text.splitlines()[1:] if line.strip()]
+    return sum(int(fields[-1]) for fields in lines)
+
+
+def parse_qdisc_drops(text: str) -> int:
+    matches = re.findall(r"\bdropped\s+(\d+)", text)
+    if not matches and text.strip():
+        raise ValueError("qdisc drop counter is unavailable")
+    return sum(int(value) for value in matches)
 
 
 def counter_deltas(before: dict[str, dict[str, Any]],
@@ -466,8 +497,8 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
     if missing:
         raise ValueError(f"global is missing: {', '.join(sorted(missing))}")
     topology, nodes = global_config["topology"], global_config["nodes"]
-    if topology not in {"local_loopback", "distributed_ethernet"}:
-        raise ValueError("global.topology must be local_loopback or distributed_ethernet")
+    if topology not in {"local_loopback", "distributed_ethernet", "external_generator"}:
+        raise ValueError("global.topology must be local_loopback, distributed_ethernet, or external_generator")
     for role in ("receiver", "sender"):
         node = nodes.get(role)
         if not isinstance(node, dict) or not management_host(node) or not benchmark_ip(node):
@@ -481,9 +512,18 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
         if not all(is_local(value) for value in (rx_management, tx_management,
                                                   rx_benchmark, tx_benchmark)) or interface != "lo":
             raise ValueError("local_loopback requires loopback control/data addresses and interface lo")
-    elif (is_local(rx_management) or is_local(tx_management) or
+    elif topology == "distributed_ethernet" and (is_local(rx_management) or is_local(tx_management) or
           rx_management == tx_management or rx_benchmark == tx_benchmark or interface == "lo"):
         raise ValueError("distributed_ethernet requires distinct management hosts and benchmark IPs")
+    elif topology == "external_generator" and (
+            is_local(rx_management) or not is_local(tx_management) or
+            rx_benchmark == tx_benchmark or interface == "lo" or
+            nodes["sender"].get("interface") in {None, "lo"}):
+        raise ValueError("external_generator requires a remote receiver and local sender with distinct dedicated Ethernet addresses")
+    for role, node in nodes.items():
+        for field in ("project_root", "build_preset", "build_subdir"):
+            if field in node and (not isinstance(node[field], str) or not node[field]):
+                raise ValueError(f"global.nodes.{role}.{field} must be a nonempty string")
     runtime = global_config["runtime"]
     runtime_required = {"repetitions", "port", "receiver_startup_seconds",
                         "shutdown_timeout_seconds", "scheduler", "priority"}
@@ -538,7 +578,7 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
         for field in ("mode", "duration_seconds", "rates_pps", "payload_size"):
             if field not in sender:
                 raise ValueError(f"{name}: sender.{field} is required")
-        if sender["mode"] not in {"steady", "burst"} or float(sender["duration_seconds"]) <= 0:
+        if sender["mode"] not in {"steady", "burst", "flood"} or float(sender["duration_seconds"]) <= 0:
             raise ValueError(f"{name}: invalid sender mode or duration")
         if (not isinstance(sender["rates_pps"], list) or not sender["rates_pps"] or
                 any(not isinstance(rate, int) or rate <= 0 for rate in sender["rates_pps"])):
@@ -548,11 +588,43 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
         bursts = sender.get("burst_sizes", [1])
         if sender["mode"] == "steady" and bursts != [1]:
             raise ValueError(f"{name}: steady mode requires burst_sizes: [1]")
+        send_batch_max = sender.get("send_batch_max", 1)
+        batch_window_us = sender.get("batch_window_us", 10)
+        threads = sender.get("threads", 1)
+        cpus = sender.get("cpus")
+        if not isinstance(send_batch_max, int) or not 1 <= send_batch_max <= 1024:
+            raise ValueError(f"{name}: send_batch_max must be 1..1024")
+        if not isinstance(batch_window_us, int) or not 1 <= batch_window_us <= 1_000_000:
+            raise ValueError(f"{name}: batch_window_us must be 1..1000000")
+        if not isinstance(threads, int) or not 1 <= threads <= 128:
+            raise ValueError(f"{name}: threads must be 1..128")
+        if cpus is not None and (not isinstance(cpus, list) or len(cpus) != threads or
+                                 len(set(cpus)) != len(cpus) or
+                                 any(not isinstance(cpu, int) or cpu < 0 for cpu in cpus)):
+            raise ValueError(f"{name}: cpus must contain one distinct nonnegative CPU per thread")
+        if threads > 1 and cpus is None:
+            raise ValueError(f"{name}: multiple sender threads require cpus")
+        if sender["mode"] == "burst" and threads > 1:
+            raise ValueError(f"{name}: burst mode supports one sender thread")
+        if "pacing_trace" in sender and not isinstance(sender["pacing_trace"], bool):
+            raise ValueError(f"{name}: pacing_trace must be boolean")
     return config
 
 
 def binary_dir(project_root: str, runtime: dict[str, Any]) -> Path:
     return Path(project_root) / "build" / str(runtime.get("build_subdir", ""))
+
+
+def node_project_root(global_config: dict[str, Any], node: dict[str, Any]) -> str:
+    return str(node.get("project_root", global_config["remote_project_root"]))
+
+
+def node_runtime(runtime: dict[str, Any], node: dict[str, Any]) -> dict[str, Any]:
+    resolved = dict(runtime)
+    for field in ("build_preset", "build_subdir"):
+        if field in node:
+            resolved[field] = node[field]
+    return resolved
 
 
 def receiver_command(project_root: str, benchmark: dict[str, Any], runtime: dict[str, Any],
@@ -575,16 +647,24 @@ def receiver_command(project_root: str, benchmark: dict[str, Any], runtime: dict
 
 
 def sender_command(project_root: str, receiver_host: str, benchmark: dict[str, Any],
-                   runtime: dict[str, Any], stats: str, rate: int, burst: int) -> list[str]:
+                   runtime: dict[str, Any], stats: str, rate: int, burst: int,
+                   pacing_trace: str | None = None) -> list[str]:
     sender = benchmark["sender"]
     command = [str(binary_dir(project_root, runtime) / "sender"), "--ip", receiver_host,
                "--port", str(runtime["port"]), "--rate", str(rate),
                "--duration", str(sender["duration_seconds"]), "--mode", sender["mode"],
                "--burst", str(burst), "--payload-size", str(sender["payload_size"]),
                "--timestamp-every", str(benchmark["receiver"].get("sample_every", 1)),
-               "--socket-buffer", str(runtime.get("send_buffer_bytes", 0)), "--stats", stats]
-    if runtime.get("sender_cpu") is not None:
+               "--socket-buffer", str(runtime.get("send_buffer_bytes", 0)), "--stats", stats,
+               "--send-batch-max", str(sender.get("send_batch_max", 1)),
+               "--batch-window-us", str(sender.get("batch_window_us", 10)),
+               "--threads", str(sender.get("threads", 1))]
+    if sender.get("cpus") is not None:
+        command += ["--cpus", ",".join(str(cpu) for cpu in sender["cpus"])]
+    elif runtime.get("sender_cpu") is not None:
         command += ["--cpu", str(runtime["sender_cpu"])]
+    if pacing_trace is not None:
+        command += ["--pacing-trace", pacing_trace]
     return list(global_prefix(runtime)) + command
 
 
@@ -652,12 +732,11 @@ def run_state(node: NodeController, interface: str) -> dict[str, Any]:
     }.items()}
 
 
-def build_nodes(nodes: list[NodeController], project_root: str,
-                runtime: dict[str, Any]) -> None:
+def build_node(node: NodeController, project_root: str,
+               runtime: dict[str, Any]) -> None:
     preset = str(runtime.get("build_preset", "dev"))
-    for node in dict.fromkeys(nodes):
-        node.run(["cmake", "--preset", preset, "-S", project_root], timeout=120)
-        node.run(["cmake", "--build", str(binary_dir(project_root, runtime)), "-j2"], timeout=240)
+    node.run(["cmake", "--preset", preset, "-S", project_root], timeout=120)
+    node.run(["cmake", "--build", str(binary_dir(project_root, runtime)), "-j2"], timeout=240)
 
 
 def make_run_tuples(config: dict[str, Any]) -> tuple[list[RunTuple], list[RunTuple]]:
@@ -689,11 +768,147 @@ def qualification_rates(run_metadata: list[dict[str, Any]]) -> list[int]:
             by_rate.setdefault(int(metadata["run"]["requested_rate_pps"]), []).append(metadata)
     eligible = []
     for rate, runs in sorted(by_rate.items()):
-        if runs and all(int(run["sender_stats"]["failed_sends"]) == 0 and
-                        float(run["sender_stats"]["achieved_successful_send_pps"]) >= .99 * rate
+        if runs and all(run.get("qualification", {}).get("passed", False)
                         for run in runs):
             eligible.append(rate)
     return eligible
+
+
+def nearest_rank(values: list[int], quantile: float) -> int:
+    if not values:
+        raise ValueError("cannot calculate a percentile of an empty sample")
+    ordered = sorted(values)
+    index = max(0, min(len(ordered) - 1, math.ceil(quantile * len(ordered)) - 1))
+    return ordered[index]
+
+
+def analyze_pacing_trace(path: Path, sender: dict[str, Any],
+                         rate_pps: int, batch_window_us: int) -> dict[str, Any]:
+    records: list[tuple[int, int, int]] = []
+    with path.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        required = {"actual_mono_ns", "scheduled_mono_ns", "packet_count"}
+        if not required.issubset(reader.fieldnames or []):
+            raise ValueError(f"Pacing trace has an invalid header: {path}")
+        for row in reader:
+            actual = int(row["actual_mono_ns"])
+            scheduled = int(row["scheduled_mono_ns"])
+            count = int(row["packet_count"])
+            if actual < 0 or scheduled < 0 or count <= 0:
+                raise ValueError(f"Pacing trace contains an invalid record: {path}")
+            records.append((actual, scheduled, count))
+    records.sort()
+    start = int(sender["start_mono_ns"])
+    end = int(sender["scheduled_end_mono_ns"])
+    interior_start, interior_end = start + 100_000_000, end - 100_000_000
+    window_ns = 1_000_000
+    window_count = max(0, (interior_end - interior_start) // window_ns)
+    counts = [0] * window_count
+    interior_records = []
+    for actual, scheduled, count in records:
+        if interior_start <= actual < interior_start + window_count * window_ns:
+            counts[(actual - interior_start) // window_ns] += count
+            interior_records.append((actual, scheduled))
+    actual_gaps = [right[0] - left[0]
+                   for left, right in zip(interior_records, interior_records[1:])]
+    unexplained_gaps = [max(0, (right[0] - left[0]) -
+                            max(0, right[1] - left[1]))
+                        for left, right in zip(interior_records, interior_records[1:])]
+    p1 = nearest_rank(counts, .01) if counts else 0
+    p99 = nearest_rank(counts, .99) if counts else 0
+    target = rate_pps / 1000.0
+    tolerance = .10 * target
+    trace_packets = sum(count for _, _, count in records)
+    max_unexplained = max(unexplained_gaps, default=0)
+    reasons = []
+    if window_count == 0:
+        reasons.append("pacing interval is too short after edge exclusion")
+    if trace_packets != int(sender["successful_sends"]):
+        reasons.append("pacing trace packet count does not reconcile with successful sends")
+    if counts and (p1 < target - tolerance or p99 > target + tolerance):
+        reasons.append("pacing trace 1 ms p1/p99 is outside the 90-110% target band")
+    if max_unexplained > 2 * batch_window_us * 1000:
+        reasons.append("pacing trace has an unexplained enqueue gap over two batch windows")
+    return {
+        "format": "csv-v1", "records": len(records), "trace_packets": trace_packets,
+        "edge_exclusion_ms": 100, "window_us": 1000, "window_count": window_count,
+        "target_packets_per_window": target, "p1_packets": p1, "p99_packets": p99,
+        "max_enqueue_gap_ns": max(actual_gaps, default=0),
+        "max_unexplained_enqueue_gap_ns": max_unexplained,
+        "passed": not reasons, "reasons": reasons,
+    }
+
+
+def link_is_gigabit_full(state: dict[str, Any]) -> bool:
+    link = state.get("link", {})
+    text = str(link.get("value", ""))
+    return not link.get("error") and "Speed: 1000Mb/s" in text and "Duplex: Full" in text
+
+
+def throttling_is_clear(state: dict[str, Any]) -> bool:
+    result = state.get("throttled", {})
+    if result.get("error"):
+        return False
+    match = re.search(r"0x([0-9a-fA-F]+)", str(result.get("value", "")))
+    return bool(match) and int(match.group(1), 16) == 0
+
+
+def qualification_reasons(metadata: dict[str, Any]) -> list[str]:
+    sender = metadata["sender_stats"]
+    receiver = metadata["receiver_stats"]
+    rate = int(metadata["run"]["requested_rate_pps"])
+    achieved = float(sender["achieved_successful_send_pps"])
+    reasons = []
+    if not .99 * rate <= achieved <= 1.01 * rate:
+        reasons.append("achieved/requested pps is outside 99-101%")
+    if int(sender["failed_sends"]) != 0:
+        reasons.append("sender reported failed sends")
+    if int(sender["attempted_sends"]) != (int(sender["successful_sends"]) +
+                                           int(sender["failed_sends"])):
+        reasons.append("sender packet accounting does not reconcile")
+    if int(sender.get("successful_bytes", 0)) != (int(sender["successful_sends"]) *
+                                                   int(metadata["run"]["payload_size"])):
+        reasons.append("sender byte accounting does not reconcile")
+    if int(receiver["unique_valid_packets"]) != int(sender["successful_sends"]):
+        reasons.append("sender and receiver unique packet counts do not reconcile")
+    if int(receiver.get("unique_processed_packets", 0)) != int(sender["successful_sends"]):
+        reasons.append("sender and receiver processed packet counts do not reconcile")
+    for field in ("receive_sequence_gaps", "receive_duplicates"):
+        if int(receiver.get(field, 0)) != 0:
+            reasons.append(f"receiver reported nonzero {field}")
+    reordered = int(receiver.get("receive_reordered", 0))
+    if reordered / max(1, int(receiver["unique_valid_packets"])) >= .0001:
+        reasons.append("receiver reordering is not below 0.01%")
+    for field in ("processed_sequence_gaps", "processed_duplicates", "short_packets",
+                  "invalid_magic", "unsupported_version", "spsc_overflow"):
+        if int(receiver.get(field, 0)) != 0:
+            reasons.append(f"receiver reported nonzero {field}")
+    for side in ("counters", "sender_counters"):
+        for name, counter in metadata.get(side, {}).items():
+            if counter.get("error") or counter.get("delta") is None:
+                reasons.append(f"{side}.{name} is unavailable")
+            elif int(counter["delta"]) != 0:
+                reasons.append(f"{side}.{name} changed")
+    environment = metadata.get("run_environment", {})
+    for role in ("receiver", "sender"):
+        states = environment.get(role, {})
+        if not link_is_gigabit_full(states.get("before", {})) or not link_is_gigabit_full(
+                states.get("after", {})):
+            reasons.append(f"{role} link was not stably 1 Gb/s full duplex")
+        if not throttling_is_clear(states.get("before", {})) or not throttling_is_clear(
+                states.get("after", {})):
+            reasons.append(f"{role} throttling state was unavailable or nonzero")
+    outcomes = sender.get("thread_outcomes", [])
+    if len(outcomes) != int(sender.get("threads", 1)) or any(
+            not outcome.get("affinity_success", False) for outcome in outcomes):
+        reasons.append("sender thread/CPU outcomes are incomplete or unsuccessful")
+    pacing = metadata.get("pacing")
+    if not isinstance(pacing, dict):
+        reasons.append("pacing trace analysis is missing")
+    else:
+        reasons.extend(str(reason) for reason in pacing.get("reasons", []))
+    reasons.extend(str(reason) for reason in metadata.get("validity", {}).get("reasons", []))
+    return list(dict.fromkeys(reasons))
 
 
 def throttled(state: dict[str, Any]) -> bool:
@@ -742,12 +957,12 @@ def validity_reasons(sender: dict[str, Any], receiver: dict[str, Any],
         reasons.append("kernel socket backlog remained after the post-sender drain")
     if any(value.get("delta") is not None and value["delta"] < 0 for value in counters.values()):
         reasons.append("negative kernel or NIC counter delta")
-    if topology == "distributed_ethernet" and (throttled(before_state) or throttled(after_state)):
+    if topology != "local_loopback" and (throttled(before_state) or throttled(after_state)):
         reasons.append("thermal/power throttling flag was nonzero")
-    if topology == "distributed_ethernet" and sender_before_state and sender_after_state and (
+    if topology != "local_loopback" and sender_before_state and sender_after_state and (
             throttled(sender_before_state) or throttled(sender_after_state)):
         reasons.append("sender thermal/power throttling flag was nonzero")
-    if topology == "distributed_ethernet":
+    if topology != "local_loopback":
         for label, state in (("receiver before", before_state), ("receiver after", after_state),
                              ("sender before", sender_before_state or {}),
                              ("sender after", sender_after_state or {})):
@@ -763,7 +978,9 @@ def execute_run(item: RunTuple, config: dict[str, Any], session_id: str,
                 sender_node: NodeController, environment: dict[str, Any]) -> dict[str, Any]:
     global_config, runtime = config["global"], config["global"]["runtime"]
     nodes, benchmark = global_config["nodes"], config["benchmarks"][item.benchmark_index]
-    project_root = global_config["remote_project_root"]
+    receiver_root = node_project_root(global_config, nodes["receiver"])
+    sender_root = node_project_root(global_config, nodes["sender"])
+    sender_runtime = node_runtime(runtime, nodes["sender"])
     run_id = (f"{item.benchmark_name}_r{item.repetition:02d}_{item.rate}pps_"
               f"burst{item.burst}_batch{item.batch}")
     run_dir = session_dir / item.benchmark_name
@@ -771,16 +988,20 @@ def execute_run(item: RunTuple, config: dict[str, Any], session_id: str,
     remote_base = f"/tmp/nll_{session_id}_{run_id}"
     remote_trace = remote_base + ".bin"
     remote_rx_stats, remote_tx_stats = remote_base + "_rx.json", remote_base + "_tx.json"
+    pacing_enabled = bool(benchmark["sender"].get("pacing_trace", False))
+    remote_pacing_trace = remote_base + "_pacing.csv" if pacing_enabled else None
     receiver_log, sender_log = remote_base + "_receiver.log", remote_base + "_sender.log"
     receiver_artifacts = [remote_trace, remote_rx_stats, receiver_log,
                           f"{receiver_log}.status", f"{receiver_log}.pid"]
     sender_artifacts = [remote_tx_stats, sender_log, f"{sender_log}.status",
                         f"{sender_log}.pid"]
-    rx_command = receiver_command(project_root, benchmark, runtime, remote_trace,
+    if remote_pacing_trace is not None:
+        sender_artifacts.append(remote_pacing_trace)
+    rx_command = receiver_command(receiver_root, benchmark, runtime, remote_trace,
                                   remote_rx_stats, item.batch)
-    tx_command = sender_command(project_root, benchmark_ip(nodes["receiver"]),
-                                benchmark, runtime, remote_tx_stats,
-                                item.rate, item.burst)
+    tx_command = sender_command(sender_root, benchmark_ip(nodes["receiver"]),
+                                benchmark, sender_runtime, remote_tx_stats,
+                                item.rate, item.burst, remote_pacing_trace)
     interface = nodes["receiver"]["interface"]
     profile = benchmark.get("profile")
     remote_profile = remote_base + ("_perf_stat.csv" if profile == "stat" else "_perf.data")
@@ -822,6 +1043,7 @@ def execute_run(item: RunTuple, config: dict[str, Any], session_id: str,
         before_state = run_state(receiver_node, interface)
         sender_interface = nodes["sender"].get("interface", interface)
         sender_before_state = run_state(sender_node, sender_interface)
+        sender_before_counters = sender_node.snapshot_counters(sender_interface)
         active_sender = sender_node.start_process(tx_command, sender_log)
         sender_handle = active_sender
 
@@ -838,6 +1060,7 @@ def execute_run(item: RunTuple, config: dict[str, Any], session_id: str,
         after_counters = receiver_node.snapshot_counters(interface)
         after_state = run_state(receiver_node, interface)
         sender_after_state = run_state(sender_node, sender_interface)
+        sender_after_counters = sender_node.snapshot_counters(sender_interface)
         receiver_handle = active_receiver
         receiver_status = shutdown_process(
             receiver_node, receiver_handle, float(runtime["shutdown_timeout_seconds"]))
@@ -858,9 +1081,14 @@ def execute_run(item: RunTuple, config: dict[str, Any], session_id: str,
         receiver_node.fetch_file(remote_trace, trace_path)
         receiver_node.fetch_file(remote_rx_stats, rx_stats_path)
         sender_node.fetch_file(remote_tx_stats, tx_stats_path)
+        pacing_path = run_dir / f"{run_id}_pacing.csv" if pacing_enabled else None
+        if remote_pacing_trace is not None and pacing_path is not None:
+            sender_node.fetch_file(remote_pacing_trace, pacing_path)
+            require_nonempty_file(pacing_path, "sender pacing trace")
         require_nonempty_file(rx_stats_path, "receiver stats")
         receiver_stats, sender_stats = safe_read_json(rx_stats_path), safe_read_json(tx_stats_path)
         counters = counter_deltas(before_counters, after_counters)
+        sender_counters = counter_deltas(sender_before_counters, sender_after_counters)
         successful = int(sender_stats["successful_sends"])
         unique_received = int(receiver_stats["unique_valid_packets"])
         unique_processed = int(receiver_stats["unique_processed_packets"])
@@ -873,11 +1101,19 @@ def execute_run(item: RunTuple, config: dict[str, Any], session_id: str,
             "schema_version": 2, "session_id": session_id, "run_id": run_id,
             "repetition_id": item.repetition, "topology": global_config["topology"],
             "run": {"campaign": item.campaign,
+                    "contributes_to_claim_measurements": benchmark.get(
+                        "contributes_to_claim_measurements",
+                        item.campaign not in {"pilot", "profile"}),
                     "receiver_variant": receiver_stats["variant"],
                     "requested_rate_pps": item.rate,
                     "duration_seconds": benchmark["sender"]["duration_seconds"],
                     "payload_size": benchmark["sender"]["payload_size"],
                     "mode": benchmark["sender"]["mode"], "burst_size": item.burst,
+                    "send_batch_max": benchmark["sender"].get("send_batch_max", 1),
+                    "batch_window_us": benchmark["sender"].get("batch_window_us", 10),
+                    "sender_threads": benchmark["sender"].get("threads", 1),
+                    "sender_cpus": benchmark["sender"].get("cpus"),
+                    "pacing_trace_enabled": pacing_enabled,
                     "batch_size": item.batch,
                     "work_ns": benchmark["receiver"].get("work_ns", 0),
                     "sample_every": benchmark["receiver"].get("sample_every", 1),
@@ -897,6 +1133,7 @@ def execute_run(item: RunTuple, config: dict[str, Any], session_id: str,
                 "application_loss_pct": 100.0 * application_loss / successful if successful else 0.0,
             },
             "counters": counters,
+            "sender_counters": sender_counters,
             "run_environment": {
                 "receiver": {"before": before_state, "after": after_state},
                 "sender": {"before": sender_before_state, "after": sender_after_state}},
@@ -904,6 +1141,17 @@ def execute_run(item: RunTuple, config: dict[str, Any], session_id: str,
             "configured_tuning_state": global_config["tuning_state"],
             "environment": environment,
         }
+        if pacing_path is not None:
+            metadata["pacing"] = analyze_pacing_trace(
+                pacing_path, sender_stats, item.rate,
+                int(benchmark["sender"].get("batch_window_us", 10)))
+            metadata["pacing"]["artifact"] = pacing_path.name
+        if item.campaign == "sender_qualification":
+            qualification_failures = qualification_reasons(metadata)
+            metadata["qualification"] = {
+                "passed": not qualification_failures,
+                "reasons": qualification_failures,
+            }
         if profile == "stat":
             profile_path = run_dir / f"{run_id}_perf_stat.csv"
             receiver_node.fetch_file(remote_profile, profile_path)
@@ -967,10 +1215,14 @@ def run_campaign(config: dict[str, Any], config_path: Path,
     progress(f"Session {session_id}: preparing {len(qualification)} qualification "
              f"runs and up to {len(comparative)} comparison runs")
     progress("Collecting frozen environment metadata from receiver, sender, and controller")
+    receiver_root = node_project_root(global_config, nodes["receiver"])
+    sender_root = node_project_root(global_config, nodes["sender"])
+    receiver_runtime = node_runtime(runtime, nodes["receiver"])
+    sender_runtime = node_runtime(runtime, nodes["sender"])
     environment = {
-        "receiver": collect_machine_metadata(receiver_node, global_config["remote_project_root"],
+        "receiver": collect_machine_metadata(receiver_node, receiver_root,
                                              nodes["receiver"]["interface"]) if global_config["metadata_collection"] else {},
-        "sender": collect_machine_metadata(sender_node, global_config["remote_project_root"],
+        "sender": collect_machine_metadata(sender_node, sender_root,
                                            nodes["sender"].get("interface")) if global_config["metadata_collection"] else {},
         "orchestrator": collect_machine_metadata(LocalNode(), str(Path(__file__).parent), None) if global_config["metadata_collection"] else {},
     }
@@ -992,7 +1244,9 @@ def run_campaign(config: dict[str, Any], config_path: Path,
     try:
         if not skip_build:
             progress("Building configured binaries on the benchmark nodes")
-            build_nodes([receiver_node, sender_node], global_config["remote_project_root"], runtime)
+            build_node(receiver_node, receiver_root, receiver_runtime)
+            if sender_node is not receiver_node or sender_root != receiver_root or sender_runtime != receiver_runtime:
+                build_node(sender_node, sender_root, sender_runtime)
             progress("Remote builds complete")
         completed_runs = 0
         planned_runs = len(qualification) + len(comparative)
@@ -1066,8 +1320,8 @@ def run_campaign(config: dict[str, Any], config_path: Path,
 def preflight(config: dict[str, Any]) -> dict[str, Any]:
     validate_config(config)
     global_config, nodes = config["global"], config["global"]["nodes"]
-    if global_config["topology"] != "distributed_ethernet":
-        raise ValueError("preflight is only meaningful for distributed_ethernet")
+    if global_config["topology"] not in {"distributed_ethernet", "external_generator"}:
+        raise ValueError("preflight is only meaningful for an Ethernet topology")
     expected_commit = global_config.get("benchmark_commit")
     if not expected_commit or expected_commit == "SET_AFTER_FREEZING_COMMIT":
         raise ValueError("global.benchmark_commit must be frozen before preflight")
@@ -1078,16 +1332,17 @@ def preflight(config: dict[str, Any]) -> dict[str, Any]:
             node_config = nodes[role]
             node = get_node(management_host(node_config), global_config["user"])
             controllers.append(node)
-            root = global_config["remote_project_root"]
+            root = node_project_root(global_config, node_config)
+            role_runtime = node_runtime(global_config["runtime"], node_config)
             checks = {
                 "commit": probe(node, ["git", "-C", root, "rev-parse", "HEAD"]),
                 "clean": probe(node, ["git", "-C", root, "status", "--porcelain"]),
                 "perf": probe(node, ["perf", "--version"]),
                 "chrony": probe(node, ["chronyc", "tracking"]),
                 "throttled": probe(node, ["sh", "-c", "vcgencmd get_throttled 2>/dev/null || false"]),
-                "capabilities": probe(node, ["getcap", *[str(binary_dir(root, global_config["runtime"]) / binary)
+                "capabilities": probe(node, ["getcap", *[str(binary_dir(root, role_runtime) / binary)
                     for binary in sorted(RECEIVER_BINARIES)]]) if role == "receiver" else {"value": "not applicable", "error": None},
-                "ctest": probe(node, ["ctest", "--test-dir", str(binary_dir(root, global_config["runtime"])), "--output-on-failure"]),
+                "ctest": probe(node, ["ctest", "--test-dir", str(binary_dir(root, role_runtime)), "--output-on-failure"]),
                 "pytest": probe(node, [str(Path(root) / ".venv/bin/python"), "-m", "pytest", "-q"]),
             }
             if node_config.get("interface"):

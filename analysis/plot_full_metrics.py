@@ -15,7 +15,8 @@ from latency_utils import load_binary_file, remove_clock_drift
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--trace", action="append", nargs=2, metavar=("LABEL", "PATH"), required=True)
-    parser.add_argument("--topology", choices=["local_loopback", "distributed_ethernet"], required=True)
+    parser.add_argument("--topology", choices=["local_loopback", "distributed_ethernet",
+                                                "external_generator"], required=True)
     parser.add_argument("--out", default="receive_latency_cdf.png")
     args = parser.parse_args()
     frames = []

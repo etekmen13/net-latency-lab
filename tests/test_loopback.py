@@ -259,3 +259,72 @@ def test_sender_failures_are_counted(binaries, tmp_path):
     stats = json.loads(stats_path.read_text())
     assert stats["attempted_sends"] > 0 and stats["successful_sends"] == 0
     assert stats["failed_sends"] == stats["attempted_sends"]
+
+
+@pytest.mark.parametrize("batch", [1, 4, 16, 64])
+def test_sender_sendmmsg_batches_preserve_payload_sequence_and_sampling(
+        binaries, tmp_path, batch):
+    port = free_port(); received = []; stop = threading.Event()
+    def receive():
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server:
+            server.bind(("127.0.0.1", port)); server.settimeout(0.02)
+            while not stop.is_set():
+                try: received.append(server.recvfrom(65535)[0])
+                except TimeoutError: pass
+    thread = threading.Thread(target=receive); thread.start()
+    stats_path = tmp_path / f"batch-{batch}.json"
+    trace_path = tmp_path / f"batch-{batch}.csv"
+    result = subprocess.run([
+        binaries["sender"], "--ip", "127.0.0.1", "--port", str(port),
+        "--rate", "20000", "--duration", ".1", "--payload-size", "128",
+        "--timestamp-every", "7", "--send-batch-max", str(batch),
+        "--batch-window-us", "50", "--pacing-trace", trace_path,
+        "--stats", stats_path], capture_output=True, timeout=3)
+    time.sleep(.05); stop.set(); thread.join()
+    assert result.returncode == 0
+    stats = json.loads(stats_path.read_text())
+    assert stats["successful_sends"] == stats["attempted_sends"] == 2000
+    assert stats["failed_sends"] == stats["error_returns"] == 0
+    assert stats["syscall_count"] <= stats["successful_sends"]
+    assert sum(int(size) * count for size, count in
+               stats["effective_batch_size_histogram"].items()) == 2000
+    assert stats["pacing_trace"]["records"] == stats["syscall_count"]
+    assert len(received) == 2000 and all(len(payload) == 128 for payload in received)
+    sequences = [struct.unpack("!HBBIQ", payload[:16])[3] for payload in received]
+    assert len(sequences) == len(set(sequences))
+    assert sorted(sequences) == list(range(2000))
+    timestamps = [struct.unpack("!HBBIQ", payload[:16])[4] for payload in received]
+    assert all((timestamp != 0) == (sequence % 7 == 0)
+               for sequence, timestamp in zip(sequences, timestamps))
+
+
+def test_sender_flood_mode_and_two_worker_sequences(binaries, tmp_path):
+    allowed = sorted(os.sched_getaffinity(0))
+    if len(allowed) < 2:
+        pytest.skip("two-worker sender needs two allowed CPUs")
+    port = free_port(); received = []; stop = threading.Event()
+    def receive():
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server:
+            server.bind(("127.0.0.1", port)); server.settimeout(.02)
+            while not stop.is_set():
+                try: received.append(server.recvfrom(65535)[0])
+                except TimeoutError: pass
+    thread = threading.Thread(target=receive); thread.start()
+    stats_path = tmp_path / "flood.json"
+    result = subprocess.run([
+        binaries["sender"], "--ip", "127.0.0.1", "--port", str(port),
+        "--mode", "flood", "--rate", "1000", "--duration", ".03",
+        "--send-batch-max", "16", "--threads", "2", "--cpus",
+        f"{allowed[0]},{allowed[1]}", "--stats", stats_path],
+        capture_output=True, timeout=3)
+    time.sleep(.05); stop.set(); thread.join()
+    assert result.returncode == 0
+    stats = json.loads(stats_path.read_text())
+    assert stats["successful_sends"] > 1000
+    assert stats["attempted_sends"] == (stats["successful_sends"] +
+                                         stats["failed_sends"])
+    assert (stats["error_returns"] > 0) == (stats["failed_sends"] > 0)
+    assert len(stats["thread_outcomes"]) == 2
+    sequences = [struct.unpack("!HBBIQ", payload[:16])[3] for payload in received]
+    assert len(sequences) == len(set(sequences))
+    assert sequences and all(sequence < stats["successful_sends"] for sequence in sequences)

@@ -54,7 +54,9 @@ This exercises all three binaries and produces an ignored session under
 `results/sessions/`. It does not generate recruiter-facing figures or claims.
 Individual options are available through `--help`; notable controls are
 `--sample-every`, `--socket-buffer`, `--work`, `--batch`, CPU affinity, and
-scheduler policy.
+scheduler policy. The sender additionally supports adaptive `sendmmsg` through
+`--send-batch-max` and `--batch-window-us`, buffered `--pacing-trace`, diagnostic
+`--mode flood`, and optional phase-staggered `--threads`/`--cpus` workers.
 
 ## Physical Raspberry Pi workflow
 
@@ -65,9 +67,20 @@ based on Debian 13 (Trixie), with direct 1 GbE at
 buffers, seed 477, qualification, five-repetition raw/workload campaigns, and
 separate profiling.
 
-After setting only Wi-Fi management addresses and the frozen commit:
+After setting only management addresses and the candidate commit, qualify the
+generator and run the non-claim pilot in separate sessions. Preserve failed
+sessions. Try batch windows 10, 25, 50, then 100 microseconds and stop at the
+first configuration whose complete grid passes; use two sender workers only if
+single-core batching fails, and `external_generator` with a dedicated x86 NIC
+only if both Pi stages fail.
 
 ```sh
+./run_lab.sh --config config_sender_qualification.yaml --preflight
+./run_lab.sh --config config_sender_qualification.yaml
+./run_lab.sh --config config_pilot.yaml
+
+# Freeze the passing protocol and parameters in a new benchmark commit, update
+# benchmark_commit, then collect an entirely fresh final campaign.
 ./run_lab.sh --config config_distributed.yaml --preflight
 ./run_lab.sh --config config_distributed.yaml
 
@@ -80,8 +93,9 @@ python analysis/publish_results.py results/sessions/MEASUREMENT_SESSION \
   results/sessions/PROFILE_SESSION results/pi4-YYYY-MM-DD
 ```
 
-The harness freezes tuple order before launching, automatically qualifies the
-sender grid, waits silently for sender duration plus a one-second drain, and
+The harness freezes tuple order before launching, strictly qualifies the sender
+grid (rate, accounting, counters, link/throttle state, and 1 ms pacing), waits
+silently for sender duration plus a one-second drain, and
 then collects status/artifacts. Each run records requested/observed socket
 buffers, monotonic receive/process windows, drain/backlog, thermal/throttle and
 clock state, link/duplex/offloads, IRQ affinity, system counters, process
@@ -107,6 +121,7 @@ mechanism. Observations and explanations remain separate. Cross-host
 `CLOCK_REALTIME` latency is synchronization-limited and is not used for a claim
 without materially smaller recorded clock uncertainty.
 
-See [results/README.md](results/README.md). Until physical runs complete, the
-correct supported statement is simply: no Raspberry Pi performance result has
-been published.
+See [results/README.md](results/README.md). Old sessions remain immutable
+historical evidence and must not be combined with the new campaign. Until the
+fresh physical runs and explicit review complete, no Raspberry Pi performance
+result is published.

@@ -3,19 +3,19 @@
 global:
   topology: distributed_ethernet
   benchmark_commit: SET_AFTER_FREEZING_COMMIT
-  remote_project_root: /home/pi/net-latency-lab
+  remote_project_root: /root/net-latency-lab
   local_project_root: .
   local_data_dir: results/sessions
-  user: pi
+  user: root
   metadata_collection: true
   tuning_state: pi4-predeclared-v1
   nodes:
     receiver:
-      management_host: 192.168.1.10
+      management_host: nll-receiver
       benchmark_ip: 192.168.50.2
       interface: eth0
     sender:
-      management_host: 192.168.1.11
+      management_host: nll-sender
       benchmark_ip: 192.168.50.1
       interface: eth0
   runtime:
@@ -39,17 +39,17 @@ global:
 benchmarks:
   - name: sender_qualification
     campaign: sender_qualification
-    repetitions: 3
+    repetitions: 5
     receiver: {binary: receiver_threaded, batch_sizes: [64], work_ns: 0, sample_every: 0}
     sender:
-      {mode: steady, duration_seconds: 10, rates_pps: [100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 950000], burst_sizes: [1], payload_size: 64}
+      {mode: steady, duration_seconds: 10, rates_pps: [100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 950000], burst_sizes: [1], payload_size: 64, send_batch_max: 64, batch_window_us: 10, threads: 1, pacing_trace: true}
 
   - name: raw_baseline
     campaign: raw
     uses_qualified_rates: true
     receiver: {binary: receiver_baseline, batch_sizes: [1], work_ns: 0, sample_every: 0}
     sender: &raw_sender
-      {mode: steady, duration_seconds: 30, rates_pps: [100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 950000], burst_sizes: [1], payload_size: 64}
+      {mode: steady, duration_seconds: 30, rates_pps: [100000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 950000], burst_sizes: [1], payload_size: 64, send_batch_max: 64, batch_window_us: 10, threads: 1}
   - name: raw_batched
     campaign: raw
     uses_qualified_rates: true
@@ -65,7 +65,7 @@ benchmarks:
     campaign: workload_10us
     receiver: {binary: receiver_baseline, batch_sizes: [1], work_ns: 10000, sample_every: 100}
     sender: &work_sender
-      {mode: steady, duration_seconds: 30, rates_pps: [10000, 25000, 50000, 75000, 100000, 125000, 150000, 200000], burst_sizes: [1], payload_size: 64}
+      {mode: steady, duration_seconds: 30, rates_pps: [10000, 25000, 50000, 75000, 100000, 125000, 150000, 200000], burst_sizes: [1], payload_size: 64, send_batch_max: 64, batch_window_us: 10, threads: 1}
   - name: work_batched
     campaign: workload_10us
     receiver: {binary: receiver_batched, batch_sizes: [1, 4, 8, 16, 32, 64], work_ns: 10000, sample_every: 100}

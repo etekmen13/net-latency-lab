@@ -14,7 +14,10 @@ from pathlib import Path
 import pytest
 import yaml
 
-from main import (counter_deltas, parse_udp_rcvbuf_errors, receiver_command,
+from main import (analyze_pacing_trace, counter_deltas, parse_qdisc_drops,
+                  parse_udp_rcvbuf_errors, parse_udp_sndbuf_errors,
+                  parse_udp_socket_drops, qualification_rates,
+                  qualification_reasons, receiver_command,
                   sender_command, validate_config, run_campaign, ProcessHandle,
                   LocalNode, NodeController, RemoteNode, shutdown_process)
 
@@ -42,6 +45,26 @@ def test_inconsistent_topology_and_runtime_are_rejected():
         validate_config(config)
 
 
+def test_external_generator_topology_and_role_specific_build_are_supported():
+    config = debug_config()
+    config["global"]["topology"] = "external_generator"
+    config["global"]["nodes"] = {
+        "receiver": {"management_host": "192.0.2.10", "benchmark_ip": "198.51.100.2",
+                     "interface": "eth0"},
+        "sender": {"management_host": "127.0.0.1", "benchmark_ip": "198.51.100.1",
+                   "interface": "enp1s0", "project_root": "/controller/project",
+                   "build_preset": "dev", "build_subdir": "dev"},
+    }
+    validated = validate_config(config)
+    sender = validated["global"]["nodes"]["sender"]
+    runtime = validated["global"]["runtime"]
+    tx = sender_command(sender["project_root"], "198.51.100.2",
+                        validated["benchmarks"][0],
+                        {**runtime, "build_subdir": sender["build_subdir"]},
+                        "/tmp/tx.json", 1000, 1)
+    assert tx[0] == "/controller/project/build/dev/sender"
+
+
 def test_command_construction_has_stats_runtime_and_variant_options():
     config = debug_config(); runtime = config["global"]["runtime"]
     threaded = config["benchmarks"][2]
@@ -50,6 +73,9 @@ def test_command_construction_has_stats_runtime_and_variant_options():
     assert rx[0] == "/project/build/dev/receiver_threaded"
     assert "--stats" in rx and "--worker-cpu" not in rx and rx[rx.index("--batch") + 1] == "8"
     assert "--payload-size" in tx and "--stats" in tx and "--rate" in tx
+    assert tx[tx.index("--send-batch-max") + 1] == "1"
+    assert tx[tx.index("--batch-window-us") + 1] == "10"
+    assert tx[tx.index("--threads") + 1] == "1"
 
 
 def test_udp_counter_parser_and_separate_deltas():
@@ -63,6 +89,82 @@ def test_udp_counter_parser_and_separate_deltas():
     assert delta["udp_rcvbuf_errors"] == {"before": 7, "after": 9, "delta": 2, "error": None}
     assert delta["nic_rx_dropped"]["delta"] is None
     assert delta["nic_rx_dropped"]["error"] == "unavailable"
+
+
+def test_extended_drop_counter_parsers():
+    snmp = ("Udp: InDatagrams NoPorts InErrors OutDatagrams RcvbufErrors SndbufErrors\n"
+            "Udp: 10 0 2 11 7 3\n")
+    assert parse_udp_sndbuf_errors(snmp) == 3
+    udp = "  sl  local_address rem_address st tx_queue rx_queue tr tm->when retrnsmt uid timeout inode ref pointer drops\n"
+    udp += "  1: 00000000:0000 00000000:0000 07 0 0 0 0 0 0 0 0 4\n"
+    udp += "  2: 00000000:0001 00000000:0000 07 0 0 0 0 0 0 0 0 6\n"
+    assert parse_udp_socket_drops(udp) == 10
+    assert parse_qdisc_drops("Sent 1 bytes 1 pkt (dropped 2, overlimits 0)\n"
+                             "Sent 2 bytes 2 pkt (dropped 3, overlimits 0)\n") == 5
+
+
+def test_pacing_trace_analysis_accepts_uniform_windows_and_rejects_gap(tmp_path):
+    start, end, rate = 1_000_000_000, 2_000_000_000, 100_000
+    path = tmp_path / "pacing.csv"
+    rows = ["actual_mono_ns,scheduled_mono_ns,first_sequence,packet_count,thread_index"]
+    for sequence in range(0, rate, 10):
+        timestamp = start + sequence * 10_000
+        rows.append(f"{timestamp},{timestamp},{sequence},10,0")
+    path.write_text("\n".join(rows) + "\n")
+    sender = {"start_mono_ns": start, "scheduled_end_mono_ns": end,
+              "successful_sends": rate}
+    analysis = analyze_pacing_trace(path, sender, rate, 10)
+    assert analysis["passed"] is True
+    assert analysis["p1_packets"] == analysis["p99_packets"] == 100
+
+    # Moving one interior batch creates both an empty/overfull 1 ms window and
+    # an unexplained enqueue gap.
+    for index in (2001, 2002):
+        moved = rows[index].split(",")
+        moved[0] = str(start + 205_000_000)
+        rows[index] = ",".join(moved)
+    path.write_text("\n".join(rows) + "\n")
+    assert analyze_pacing_trace(path, sender, rate, 10)["passed"] is False
+
+
+def test_qualification_rejects_pacing_rate_accounting_and_environment_failures():
+    zero_counters = {"drop": {"before": 0, "after": 0, "delta": 0, "error": None}}
+    clean_state = {
+        "link": {"value": "Speed: 1000Mb/s\nDuplex: Full", "error": None},
+        "throttled": {"value": "throttled=0x0", "error": None},
+    }
+    metadata = {
+        "run": {"campaign": "sender_qualification", "requested_rate_pps": 100_000,
+                "payload_size": 64},
+        "sender_stats": {"achieved_successful_send_pps": 100_000,
+                         "attempted_sends": 1000, "successful_sends": 1000,
+                         "failed_sends": 0, "successful_bytes": 64_000, "threads": 1,
+                         "thread_outcomes": [{"affinity_success": True}]},
+        "receiver_stats": {"unique_valid_packets": 1000, "receive_sequence_gaps": 0,
+                           "receive_duplicates": 0, "receive_reordered": 0,
+                           "unique_processed_packets": 1000,
+                           "processed_sequence_gaps": 0, "processed_duplicates": 0,
+                           "short_packets": 0, "invalid_magic": 0,
+                           "unsupported_version": 0, "spsc_overflow": 0},
+        "counters": copy.deepcopy(zero_counters),
+        "sender_counters": copy.deepcopy(zero_counters),
+        "run_environment": {role: {edge: copy.deepcopy(clean_state)
+                                    for edge in ("before", "after")}
+                            for role in ("receiver", "sender")},
+        "pacing": {"passed": True, "reasons": []},
+        "validity": {"valid": True, "reasons": []},
+    }
+    assert qualification_reasons(metadata) == []
+    metadata["qualification"] = {"passed": True, "reasons": []}
+    assert qualification_rates([metadata]) == [100_000]
+
+    metadata["sender_stats"]["achieved_successful_send_pps"] = 101_001
+    metadata["pacing"] = {"passed": False, "reasons": ["pacing failed"]}
+    metadata["sender_counters"]["drop"]["delta"] = 1
+    failures = qualification_reasons(metadata)
+    assert any("99-101%" in reason for reason in failures)
+    assert "pacing failed" in failures
+    assert any("sender_counters.drop" in reason for reason in failures)
 
 
 def test_node_cleanup_uses_explicit_paths_and_tolerates_missing_files(tmp_path):
@@ -441,12 +543,17 @@ class FakeNode(NodeController):
                 "queue_depth_at_shutdown": 0}))
         elif source.endswith("_perf_stat.csv"):
             destination.write_text("1,,cycles,100.00,100.00\n")
+        elif source.endswith("_pacing.csv"):
+            destination.write_text(
+                "actual_mono_ns,scheduled_mono_ns,first_sequence,packet_count,thread_index\n"
+                "1200000000,1200000000,0,1,0\n")
         elif source.endswith(".perf.data"):
             destination.write_bytes(b"perf data")
         else:
             destination.write_text(json.dumps({"attempted_sends": 1, "successful_sends": 1,
                 "failed_sends": 0, "elapsed_seconds": 1.0,
-                "achieved_successful_send_pps": 1.0}))
+                "achieved_successful_send_pps": 1.0, "start_mono_ns": 1000000000,
+                "scheduled_end_mono_ns": 2000000000}))
 
     def remove_files(self, paths):
         self.cleanup_requests.append(list(paths))
@@ -511,6 +618,34 @@ def test_fake_controller_pid_lifecycle_repetitions_metadata_and_progress(
         assert all(path.startswith("/tmp/nll_") for path in cleaned)
         assert {next(suffix for suffix in ordinary_suffixes if path.endswith(suffix))
                 for path in cleaned} == ordinary_suffixes
+
+
+def test_harness_collects_configured_pacing_trace_and_resolved_sender_metadata(
+        monkeypatch, tmp_path):
+    fake = FakeNode(metadata_root=tmp_path)
+    monkeypatch.setattr("main.get_node", lambda host, user: fake)
+    monkeypatch.setattr("main.time.sleep", lambda seconds: None)
+    config = one_benchmark_config(tmp_path)
+    config["global"]["runtime"]["repetitions"] = 1
+    sender = config["benchmarks"][0]["sender"]
+    sender.update({"send_batch_max": 16, "batch_window_us": 25,
+                   "threads": 1, "pacing_trace": True})
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(yaml.safe_dump(config))
+
+    session = run_campaign(config, config_path, skip_build=True)
+
+    metadata = json.loads(next(session.glob("**/*_meta.json")).read_text())
+    assert metadata["run"]["send_batch_max"] == 16
+    assert metadata["run"]["batch_window_us"] == 25
+    assert metadata["run"]["sender_threads"] == 1
+    assert metadata["pacing"]["artifact"].endswith("_pacing.csv")
+    assert (next(session.glob("**/*_pacing.csv"))).is_file()
+    sender_handle = next(handle for handle in fake.handles if
+                         any(Path(part).name == "sender" for part in handle.command))
+    assert "--pacing-trace" in sender_handle.command
+    assert any(path.endswith("_pacing.csv") for request in fake.cleanup_requests
+               for path in request)
 
 
 def test_fake_controller_receiver_failure_propagates(monkeypatch, tmp_path):

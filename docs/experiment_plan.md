@@ -26,18 +26,28 @@ IRQs, CPU 1 housekeeping, CPU 2 the worker, and CPU 3 receive/sender loops.
 
 The harness writes the randomized tuple order before launch with seed 477.
 
-1. Sender qualification uses 64-byte payloads, zero work, threaded batch 64,
-   rates 100k through 900k in 100k steps plus 950k PPS, three 10-second runs.
-   A rate is eligible only if all repetitions have zero send failures and at
-   least 99% achieved/requested PPS. The eligible grid is frozen in the
-   manifest before comparisons.
-2. Raw throughput uses zero work, count-only logging, 30 seconds, five
+1. Engineering sender qualification is a separate randomized session using
+   64-byte payloads, zero work, threaded receive batch 64, rates 100k through
+   900k in 100k steps plus 950k PPS, and five 10-second runs. Start with one
+   sender core, `send_batch_max=64`, and a 10 us batch window; retry fresh
+   sessions at 25, 50, and 100 us only as needed. Every repetition must achieve
+   99–101% of requested PPS, reconcile sender/receiver counts with no failures,
+   gaps, duplicates, drops, or error-counter changes, retain 1 Gb/s full duplex
+   and `throttled=0x0`, and have 1 ms pacing p1/p99 within 90–110% after 100 ms
+   edge exclusion with no unexplained gap over two batch windows.
+2. A separate non-claim pilot runs 100k, 200k, 400k, 600k, 800k, and 950k
+   against baseline batch 1 and batched/threaded batch 64. It must expose a
+   throughput/loss knee or demonstrate that an implementation sustains 950k.
+   Freeze the passing sender and protocol in a new commit only after this pilot.
+3. The fresh final campaign repeats sender qualification, then raw throughput
+   uses zero work, count-only logging, 30 seconds, five
    repetitions, and baseline plus batched/threaded batches 1, 4, 8, 16, 32,
    and 64 at every eligible rate.
-3. The ingress-isolation campaign uses 10,000 ns work and samples every 100th
+4. The ingress-isolation campaign uses 10,000 ns work and samples every 100th
    packet. It uses the same variants at 10k, 25k, 50k, 75k, 100k, 125k, 150k,
    and 200k PPS for five 30-second repetitions.
-4. Profiling is separate and never contributes to throughput or latency. The
+5. Profiling is selected only from the fresh measurements, is separate, and
+   never contributes to throughput or latency. The
    representative batch is the highest median processed PPS among sustainable
    configurations; candidates within 2% choose the smaller batch. Load is 80%
    of the lowest selected sustainable rate. Each implementation receives three
@@ -63,7 +73,7 @@ accounting. Report median processed PPS and IQR at the highest passing requested
 rate. Improvement is the ratio of selected implementation and baseline medians
 at their respective highest passing rates.
 
-Offered PPS is successful full-length `sendto` calls divided by actual sender
+Offered PPS is successful full-length UDP submissions divided by actual sender
 runtime. Received and processed PPS use unique valid receives and unique
 processed sequences over that same runtime. Ingress loss is successful sends
 minus unique valid receives; application loss is successful sends minus unique

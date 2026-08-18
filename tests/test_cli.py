@@ -33,6 +33,21 @@ def test_variant_help_only_exposes_relevant_options(binaries):
 
 @pytest.mark.parametrize("arguments", [["--ip", "bad"], ["--rate", "0"], ["--duration", "0"],
                                          ["--burst", "0"], ["--payload-size", "15"],
-                                         ["--payload-size", "65508"]])
+                                         ["--payload-size", "65508"],
+                                         ["--send-batch-max", "0"],
+                                         ["--send-batch-max", "1025"],
+                                         ["--batch-window-us", "0"],
+                                         ["--threads", "0"],
+                                         ["--threads", "2"],
+                                         ["--threads", "2", "--cpus", "0"],
+                                         ["--cpus", "0,0"]])
 def test_sender_validation(binaries, arguments):
     assert subprocess.run([binaries["sender"], *arguments], capture_output=True).returncode != 0
+
+
+def test_sender_help_exposes_batch_flood_trace_and_thread_controls(binaries):
+    result = subprocess.run([binaries["sender"], "--help"], capture_output=True, text=True)
+    assert result.returncode == 0
+    for option in ("flood", "--send-batch-max", "--batch-window-us", "--threads",
+                   "--cpus", "--pacing-trace"):
+        assert option in result.stdout

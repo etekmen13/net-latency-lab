@@ -29,8 +29,9 @@ def validate_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     missing = sorted(REQUIRED_TOP_LEVEL - metadata.keys())
     if missing:
         raise ValueError(f"Run metadata missing fields: {', '.join(missing)}")
-    if metadata["topology"] not in {"local_loopback", "distributed_ethernet"}:
-        raise ValueError("topology must be local_loopback or distributed_ethernet")
+    if metadata["topology"] not in {"local_loopback", "distributed_ethernet",
+                                     "external_generator"}:
+        raise ValueError("topology must be local_loopback, distributed_ethernet, or external_generator")
     run = metadata.get("run")
     if not isinstance(run, dict):
         raise ValueError("run metadata must be an object")

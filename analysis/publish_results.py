@@ -24,9 +24,9 @@ def sha256(path: Path) -> str:
 
 def publish(measurement: Path, profile: Path, output: Path) -> Path:
     runs = pd.read_csv(measurement / "per_run_summary.csv")
-    physical = runs[runs.topology == "distributed_ethernet"]
+    physical = runs[runs.topology != "local_loopback"]
     if physical.empty:
-        raise ValueError("Publication requires physical distributed_ethernet data")
+        raise ValueError("Publication requires physical Ethernet data")
     comparison = physical[physical.campaign.isin(["raw", "workload_10us"])]
     grouped = comparison.groupby(["campaign", "receiver", "batch_size", "requested_rate_pps"])
     bad_repetitions = [str(key) for key, group in grouped if len(group) != 5]

@@ -14,7 +14,7 @@ def label(row: pd.Series) -> str:
 
 
 def figure_throughput(per_run: pd.DataFrame, output: Path) -> Path:
-    physical = per_run[per_run.topology == "distributed_ethernet"]
+    physical = per_run[per_run.topology != "local_loopback"]
     campaigns = [("raw", "Raw (0 ns work)"), ("workload_10us", "10 µs work")]
     fig, axes = plt.subplots(2, 2, figsize=(12, 8), sharex=False)
     for row_index, (campaign, title) in enumerate(campaigns):
@@ -93,7 +93,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     output_dir = args.output_dir or args.per_run_csv.parent
     data = pd.read_csv(args.per_run_csv)
-    if not (data.topology == "distributed_ethernet").any():
+    if not (data.topology != "local_loopback").any():
         print("No recruiter-facing figures generated from loopback-only data.")
     else:
         print(figure_throughput(data, output_dir / "figure1_throughput_loss.png"))

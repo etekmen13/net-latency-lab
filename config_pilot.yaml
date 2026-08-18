@@ -1,0 +1,56 @@
+# Non-claim six-rate receiver knee pilot. Run only after a sender configuration
+# passes config_sender_qualification.yaml; copy that frozen sender block here.
+global:
+  topology: distributed_ethernet
+  benchmark_commit: SET_AFTER_FREEZING_COMMIT
+  remote_project_root: /root/net-latency-lab
+  local_project_root: .
+  local_data_dir: results/sessions
+  user: root
+  metadata_collection: true
+  tuning_state: pi4-predeclared-v1
+  nodes:
+    receiver: {management_host: nll-receiver, benchmark_ip: 192.168.50.2, interface: eth0}
+    sender: {management_host: nll-sender, benchmark_ip: 192.168.50.1, interface: eth0}
+  runtime:
+    repetitions: 1
+    shuffle_seed: 477
+    port: 49200
+    receiver_startup_seconds: 0.5
+    post_sender_drain_seconds: 1.0
+    shutdown_timeout_seconds: 30
+    receive_buffer_bytes: 4194304
+    send_buffer_bytes: 4194304
+    receiver_cpu: 3
+    worker_cpu: 2
+    sender_cpu: 3
+    scheduler: fifo
+    priority: 90
+    privilege_prefix: []
+    build_preset: pi4-release
+    build_subdir: pi4-release
+
+benchmarks:
+  - name: pilot_baseline_batch1
+    campaign: pilot
+    contributes_to_claim_measurements: false
+    receiver: {binary: receiver_baseline, batch_sizes: [1], work_ns: 0, sample_every: 0}
+    sender: &pilot_sender
+      mode: steady
+      duration_seconds: 10
+      rates_pps: [100000, 200000, 400000, 600000, 800000, 950000]
+      burst_sizes: [1]
+      payload_size: 64
+      send_batch_max: 64
+      batch_window_us: 10
+      threads: 1
+  - name: pilot_batched_batch64
+    campaign: pilot
+    contributes_to_claim_measurements: false
+    receiver: {binary: receiver_batched, batch_sizes: [64], work_ns: 0, sample_every: 0}
+    sender: *pilot_sender
+  - name: pilot_threaded_batch64
+    campaign: pilot
+    contributes_to_claim_measurements: false
+    receiver: {binary: receiver_threaded, batch_sizes: [64], work_ns: 0, sample_every: 0}
+    sender: *pilot_sender

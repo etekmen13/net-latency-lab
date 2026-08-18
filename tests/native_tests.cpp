@@ -1,6 +1,7 @@
 #include "common/csv_writer.hpp"
 #include "common/sequence_tracker.hpp"
 #include "common/spsc_queue.hpp"
+#include "sender/sender_common.hpp"
 
 #include <atomic>
 #include <cstddef>
@@ -117,6 +118,49 @@ TEST(SPSCQueue, ShutdownDrainsPublishedData) {
   ASSERT_EQ(drained.size(), 500U);
   for (std::size_t index = 0; index < drained.size(); ++index)
     EXPECT_EQ(drained[index], index);
+}
+
+TEST(SenderPacing, IntegerDeadlinesAndAdaptiveBatchesDoNotDrift) {
+  constexpr std::uint64_t start = 123'456'789;
+  EXPECT_EQ(nll::sender::deadline_ns(start, 950'000, 950'000),
+            start + 1'000'000'000ULL);
+  EXPECT_EQ(nll::sender::scheduled_packet_count(10'000'000'000ULL, 950'000),
+            9'500'000ULL);
+  EXPECT_EQ(nll::sender::adaptive_batch_count(0, 1000, 1, 950'000, 64, 10'000),
+            10U);
+  EXPECT_EQ(nll::sender::adaptive_batch_count(998, 1000, 1, 950'000, 64, 100'000),
+            2U);
+  EXPECT_EQ(nll::sender::adaptive_batch_count(0, 1000, 2, 950'000, 64, 10'000),
+            5U);
+}
+
+TEST(SenderSubmission, PartialErrorsAndRetriesAreExplicit) {
+  auto complete = nll::sender::classify_sendmmsg_result(4, 0, 4);
+  EXPECT_EQ(complete.successful, 4U);
+  EXPECT_FALSE(complete.partial);
+  auto partial = nll::sender::classify_sendmmsg_result(2, 0, 4);
+  EXPECT_EQ(partial.successful, 2U);
+  EXPECT_TRUE(partial.partial);
+  auto interrupted = nll::sender::classify_sendmmsg_result(-1, EINTR, 4);
+  EXPECT_TRUE(interrupted.retry);
+  EXPECT_EQ(interrupted.failed, 0U);
+  auto failed = nll::sender::classify_sendmmsg_result(-1, ENETUNREACH, 4);
+  EXPECT_EQ(failed.failed, 4U);
+  EXPECT_EQ(failed.error, ENETUNREACH);
+}
+
+TEST(SenderSubmission, AtomicRangesAreUniqueAndContiguous) {
+  std::atomic<std::uint64_t> next{0};
+  std::vector<std::uint64_t> starts(4);
+  std::vector<std::thread> workers;
+  for (std::size_t index = 0; index < starts.size(); ++index)
+    workers.emplace_back([&, index] {
+      starts[index] = nll::sender::allocate_sequence_range(next, 16);
+    });
+  for (auto &worker : workers) worker.join();
+  std::sort(starts.begin(), starts.end());
+  EXPECT_EQ(starts, (std::vector<std::uint64_t>{0, 16, 32, 48}));
+  EXPECT_EQ(next.load(), 64U);
 }
 
 } // namespace

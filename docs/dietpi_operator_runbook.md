@@ -11,7 +11,7 @@ Two important prerequisites:
 
 ## 1. Assign the roles
 
-Use this fixed layoutp :
+Use this fixed layout:
 
 | Machine | Hostname | Management | Direct Ethernet |
 |---|---|---|---|
@@ -315,6 +315,18 @@ Leap status     : Normal
 
 Chrony's `tracking`, `sources`, and `waitsync` commands are documented in the [chronyc reference](https://chrony-project.org/doc/4.7/chronyc.html).
 
+`scripts/sync_clocks.sh` re-runs exactly these read-only checks and exits
+nonzero when chrony is stopped, unsynchronized, or not locked to the expected
+source. It never restarts chrony or repoints it at a public pool, because either
+would change the frozen environment:
+
+```bash
+# on the receiver
+NLL_EXPECTED_SOURCE=192.168.50.1 ./scripts/sync_clocks.sh
+# on the sender
+./scripts/sync_clocks.sh
+```
+
 Cross-host latency is still software-synchronization-limited. Do not make nanosecond cross-host latency claims from this experiment.
 
 ## 6. Verify the `/tmp` tmpfs
@@ -351,18 +363,22 @@ On the controller, create a key if you do not already have one:
 ssh-keygen -t ed25519
 ```
 
-Copy it to both Pis:
+The harness connects as `global.user` from the configuration, which is `root`
+for every tracked distributed config, and it never uses `sudo` remotely: the
+receiver's `setcap`, `perf`, and scheduling work all require it. Enable
+`PermitRootLogin prohibit-password` in `/etc/ssh/sshd_config` on both Pis,
+reload `ssh`, and copy the key to `root`:
 
 ```bash
-ssh-copy-id dietpi@SENDER_WIFI_IP
-ssh-copy-id dietpi@RECEIVER_WIFI_IP
+ssh-copy-id root@SENDER_WIFI_IP
+ssh-copy-id root@RECEIVER_WIFI_IP
 ```
 
 Connect to each interactively once:
 
 ```bash
-ssh dietpi@SENDER_WIFI_IP true
-ssh dietpi@RECEIVER_WIFI_IP true
+ssh root@SENDER_WIFI_IP true
+ssh root@RECEIVER_WIFI_IP true
 ```
 
 Confirm the host keys carefully. The benchmark harness rejects unknown SSH host keys, so both must already exist in the controller's `~/.ssh/known_hosts`.
@@ -370,8 +386,8 @@ Confirm the host keys carefully. The benchmark harness rejects unknown SSH host 
 Test SCP:
 
 ```bash
-scp dietpi@SENDER_WIFI_IP:/etc/hostname /tmp/nll-sender-hostname
-scp dietpi@RECEIVER_WIFI_IP:/etc/hostname /tmp/nll-receiver-hostname
+scp root@SENDER_WIFI_IP:/etc/hostname /tmp/nll-sender-hostname
+scp root@RECEIVER_WIFI_IP:/etc/hostname /tmp/nll-receiver-hostname
 ```
 
 ## 8. Freeze the benchmark commit
@@ -391,7 +407,6 @@ Before committing, verify that the methodology identifies the frozen environment
 DietPi v9.17.2, ARM64, based on Debian 13 (Trixie)
 ```
 
-Also replace the NetworkManager instructions with the DietPi ifupdown setup above.
 
 Run the local tests, then review and commit intentionally:
 
@@ -418,7 +433,7 @@ Save the resulting full SHA as `BENCH_COMMIT`. Do not commit physical results in
 Run on each Pi, substituting your repository URL and commit:
 
 ```bash
-cd /home/dietpi
+cd /root
 git clone <REPO_URL> net-latency-lab
 cd net-latency-lab
 git checkout --detach <BENCH_COMMIT>
@@ -466,7 +481,7 @@ Typical Pi 4 labels are `bcmgenet` for Ethernet and `brcmfmac` for Wi-Fi. Use th
 On the receiver:
 
 ```bash
-cd /home/dietpi/net-latency-lab
+cd /root/net-latency-lab
 
 sudo env \
   PROJECT_ROOT=/root/net-latency-lab \
@@ -480,7 +495,7 @@ sudo env \
 On the sender:
 
 ```bash
-cd /home/dietpi/net-latency-lab
+cd /root/net-latency-lab
 
 sudo env \
   PROJECT_ROOT=/root/net-latency-lab \
@@ -557,25 +572,28 @@ Edit the ignored working copy:
 nano results/raw/config-dietpi.yaml
 ```
 
-Set:
+Set exactly these keys; the harness reads no other shape, and any extra
+top-level block is silently ignored:
 
 ```yaml
-benchmark_commit: "<BENCH_COMMIT>"
-
-remote:
-  project_root: "/home/dietpi/net-latency-lab"
-  user: "dietpi"
-
-receiver:
-  management_host: "<RECEIVER_WIFI_IP>"
-  benchmark_ip: "192.168.50.2"
-  interface: "eth0"
-
-sender:
-  management_host: "<SENDER_WIFI_IP>"
-  benchmark_ip: "192.168.50.1"
-  interface: "eth0"
+global:
+  benchmark_commit: "<BENCH_COMMIT>"
+  remote_project_root: "/root/net-latency-lab"
+  user: "root"
+  nodes:
+    receiver:
+      management_host: "<RECEIVER_WIFI_IP_OR_HOSTNAME>"
+      benchmark_ip: "192.168.50.2"
+      interface: "eth0"
+    sender:
+      management_host: "<SENDER_WIFI_IP_OR_HOSTNAME>"
+      benchmark_ip: "192.168.50.1"
+      interface: "eth0"
 ```
+
+`management_host` may be a Wi-Fi IP or an `~/.ssh/config` alias such as
+`nll-sender`/`nll-receiver`; the tracked configs use the aliases. `benchmark_ip`
+is always the direct `/30` address and is never used for SSH.
 
 Leave these values unchanged:
 
@@ -626,7 +644,52 @@ Preflight should confirm:
 
 The TSan test is not part of preflight; that is why it was run manually earlier.
 
-## 13. Run the measurement campaign
+## 13. Qualify the sender and run the pilot
+
+The frozen protocol (`docs/experiment_plan.md`, campaigns 1 and 2) requires two
+separate non-claim sessions before any measurement campaign. Both use the
+tracked configs directly, not the `results/raw/` working copy, and both must run
+against the candidate `benchmark_commit` that is checked out on the Pis.
+
+```bash
+cd /home/etekmen13/projects/net-latency-lab
+./run_lab.sh --config config_sender_qualification.yaml --preflight
+./run_lab.sh --config config_sender_qualification.yaml
+```
+
+Qualification passes only when every repetition of every rate reaches 99-101% of
+the requested PPS, reconciles sender and receiver accounting, leaves every kernel
+and NIC counter unchanged, holds 1 Gb/s full duplex with `throttled=0x0`, and
+keeps the 1 ms pacing p1/p99 inside 90-110% after the 100 ms edge exclusion.
+Each qualification benchmark therefore needs `pacing_trace: true`; without it the
+harness records `pacing trace analysis is missing` and fails every repetition.
+
+Apply the batch-window escalation exactly as written. Start at
+`sender.batch_window_us: 10`. If any repetition fails, **preserve that session
+directory**, edit `config_sender_qualification.yaml` to the next window, rename
+the benchmark to match (`sender_qualification_window25`, `_window50`,
+`_window100`), and run a completely fresh session. Escalate 10 -> 25 -> 50 -> 100
+microseconds and stop at the first window whose complete grid passes. Only if all
+four fail should you consider two sender workers (`threads: 2` with explicit
+`cpus`), and only after that an `external_generator` topology.
+
+Then run the non-claim pilot with the winning sender block copied into
+`config_pilot.yaml`:
+
+```bash
+./run_lab.sh --config config_pilot.yaml
+```
+
+The pilot must expose a throughput/loss knee or show that an implementation
+sustains 950k PPS. Neither the qualification nor the pilot session may be used
+for a claim.
+
+Freeze the passing sender and protocol in a **new** commit, push it, update
+`benchmark_commit` in `config_distributed.yaml` (and in
+`results/raw/config-dietpi.yaml`) and in `docs/checkpoints.txt`, redeploy that
+commit to both Pis, then rerun preflight before section 14.
+
+## 14. Run the measurement campaign
 
 Prepare the controller:
 
@@ -674,7 +737,7 @@ MEASUREMENT_SESSION=/home/etekmen13/projects/net-latency-lab/results/sessions/se
 
 If a run is invalid, do not delete it or substitute one favorable repetition. Preserve it and rerun according to the predefined protocol.
 
-## 14. Run profiling
+## 15. Run profiling
 
 For the frozen DietPi campaign, the controller can perform the complete
 deployment, test, smoke, preflight, profile, validation, and summary sequence
@@ -760,14 +823,14 @@ and `processes.profile_wrapper_pid` is the `perf` PID. Workload PID publication
 and all other process discovery finish before the sender is launched, so the
 timed sender-plus-drain interval remains control-plane silent.
 
-## 15. Restore both Pis
+## 16. Restore both Pis
 
 Only after measurement and profiling have completed and artifacts are present on the controller.
 
 On the receiver:
 
 ```bash
-cd /home/dietpi/net-latency-lab
+cd /root/net-latency-lab
 sudo ./scripts/restore_env.sh /var/tmp/nll-tuning-receiver
 sudo systemctl start apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
 ```
@@ -775,7 +838,7 @@ sudo systemctl start apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
 On the sender:
 
 ```bash
-cd /home/dietpi/net-latency-lab
+cd /root/net-latency-lab
 sudo ./scripts/restore_env.sh /var/tmp/nll-tuning-sender
 sudo systemctl start apt-daily.timer apt-daily-upgrade.timer 2>/dev/null || true
 ```
@@ -788,7 +851,7 @@ sudo reboot
 
 Keep the tuning snapshot directories until the results are published.
 
-## 16. Produce the publication artifacts
+## 17. Produce the publication artifacts
 
 On the controller:
 

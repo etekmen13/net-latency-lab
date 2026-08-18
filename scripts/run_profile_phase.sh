@@ -36,7 +36,7 @@ EOF
 
 die() {
   printf 'error: %s\n' "$*" >&2
-  return 1
+  exit 1
 }
 
 while (($#)); do
@@ -275,8 +275,8 @@ if [[ ${role} == receiver ]]; then
       .venv/bin/python -m pytest -q tests/test_loopback.py \
       -k threaded_fifo_affinity_lifecycle
   done
-  KEEP_SMOKE_ARTIFACTS=1 BUILD_SUBDIR="${build_preset}" \
-    ./scripts/profile_shutdown_smoke.sh
+  # The smoke keeps its own artifacts automatically when it fails.
+  BUILD_SUBDIR="${build_preset}" ./scripts/profile_shutdown_smoke.sh
 fi
 [[ $(git rev-parse HEAD) == "${frozen_sha}" ]]
 [[ -z $(git status --porcelain) ]]

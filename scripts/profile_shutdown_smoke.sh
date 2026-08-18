@@ -43,14 +43,19 @@ cleanup_processes() {
 }
 
 finish() {
+  local status=$1
   cleanup_processes
-  if [[ ${KEEP_ARTIFACTS} == 1 ]]; then
-    printf 'Smoke artifacts retained in %s\n' "${SMOKE_DIR}"
+  if [[ ${KEEP_ARTIFACTS} == 1 ]] || ((status != 0)); then
+    printf 'Smoke artifacts retained in %s\n' "${SMOKE_DIR}" >&2
   else
     rm -rf -- "${SMOKE_DIR}"
   fi
 }
-trap finish EXIT INT TERM
+# A failed smoke always keeps its artifacts for diagnosis; INT/TERM route
+# through the single EXIT handler so cleanup never runs twice.
+trap 'finish $?' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 [[ -x ${RECEIVER} ]] || { echo "Missing receiver: ${RECEIVER}" >&2; exit 1; }
 [[ -x ${SENDER} ]] || { echo "Missing sender: ${SENDER}" >&2; exit 1; }

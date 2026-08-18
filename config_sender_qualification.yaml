@@ -1,6 +1,6 @@
 # Engineering gate. Start with batch_window_us: 10; if any repetition fails,
 # preserve that session and retry a fresh session with 25, then 50, then 100.
-global: &distributed_global
+global:
   topology: distributed_ethernet
   benchmark_commit: d86d98344af07f849c911e2bccf8cd9c348241c2
   remote_project_root: /root/net-latency-lab

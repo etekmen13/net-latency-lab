@@ -1,1 +1,11 @@
-BENCH_COMMIT=846bda45a52e36b75974c2d337a9b064ed6d695e
+# Frozen benchmark commits. BENCH_COMMIT is the SHA the Pis must be detached at
+# and the value pinned as global.benchmark_commit in every tracked distributed
+# config (config_sender_qualification.yaml, config_pilot.yaml,
+# config_distributed.yaml). Update all four together, and push the commit to
+# origin/main before deploying: preflight and scripts/run_profile_phase.sh both
+# require it to be reachable from origin/main and clean on both Pis.
+BENCH_COMMIT=d86d98344af07f849c911e2bccf8cd9c348241c2
+
+# Superseded. 846bda4 was the frozen commit of the archived 2026-08-16 profile
+# phase and is still pinned in the ignored results/raw/*.yaml working copies.
+PREVIOUS_BENCH_COMMIT=846bda45a52e36b75974c2d337a9b064ed6d695e

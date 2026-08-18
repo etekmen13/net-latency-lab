@@ -18,7 +18,7 @@ Install Debian/DietPi dependencies, including system GoogleTest:
 
 ```sh
 sudo apt-get update
-sudo apt-get install build-essential cmake libgtest-dev python3-venv chrony ethtool iproute2 linux-perf libcap2-bin
+sudo apt-get install build-essential cmake libgtest-dev python3-venv chrony ethtool iproute2 linux-perf libcap2-bin iw
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
@@ -84,12 +84,12 @@ only if both Pi stages fail.
 ./run_lab.sh --config config_distributed.yaml --preflight
 ./run_lab.sh --config config_distributed.yaml
 
-python analysis/profile_tools.py prepare results/sessions/MEASUREMENT_SESSION \
+.venv/bin/python analysis/profile_tools.py prepare results/sessions/MEASUREMENT_SESSION \
   config_distributed.yaml profile_config.yaml
 ./run_lab.sh --config profile_config.yaml
-python analysis/profile_tools.py summarize results/sessions/PROFILE_SESSION
+.venv/bin/python analysis/profile_tools.py summarize results/sessions/PROFILE_SESSION
 
-python analysis/publish_results.py results/sessions/MEASUREMENT_SESSION \
+.venv/bin/python analysis/publish_results.py results/sessions/MEASUREMENT_SESSION \
   results/sessions/PROFILE_SESSION results/pi4-YYYY-MM-DD
 ```
 

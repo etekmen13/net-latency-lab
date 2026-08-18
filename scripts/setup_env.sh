@@ -7,7 +7,10 @@ if [[ ${EUID} -ne 0 ]]; then
 fi
 
 ROLE=${1:-}
-INTERFACE=${2:-eth0}
+# Extended regular expression matched against /proc/interrupts lines.  The Pi 4
+# kernel names these IRQs after their drivers (bcmgenet/brcmfmac), not after
+# eth0/wlan0, so pass the labels your own systems actually print.
+IRQ_PATTERN=${2:-eth0}
 SNAPSHOT=${3:-/var/tmp/net-latency-lab-tuning}
 NETWORK_CPU=${NETWORK_CPU:-0}
 HOUSEKEEPING_CPU=${HOUSEKEEPING_CPU:-1}
@@ -18,7 +21,7 @@ PROJECT_ROOT=${PROJECT_ROOT:-$(pwd)}
 BUILD_SUBDIR=${BUILD_SUBDIR:-pi4-release}
 
 if [[ ${ROLE} != receiver && ${ROLE} != sender ]]; then
-  echo "Usage: sudo $0 receiver|sender [interface] [snapshot-directory]" >&2
+  echo "Usage: sudo $0 receiver|sender [irq-match-pattern] [snapshot-directory]" >&2
   exit 2
 fi
 if [[ -e ${SNAPSHOT} ]]; then
@@ -26,6 +29,15 @@ if [[ -e ${SNAPSHOT} ]]; then
   exit 1
 fi
 mkdir -p "${SNAPSHOT}/governors" "${SNAPSHOT}/irq"
+
+COMPLETED=0
+on_exit() {
+  local status=$1
+  ((status == 0 || COMPLETED == 1)) && return 0
+  echo "setup_env.sh failed (status ${status}); tuning may be partially applied." >&2
+  echo "Run 'sudo scripts/restore_env.sh ${SNAPSHOT}' and then remove ${SNAPSHOT} before retrying." >&2
+}
+trap 'on_exit $?' EXIT
 
 sysctl -n net.core.rmem_max > "${SNAPSHOT}/rmem_max"
 sysctl -n net.core.wmem_max > "${SNAPSHOT}/wmem_max"
@@ -48,7 +60,7 @@ sysctl -w kernel.perf_event_paranoid=-1
 sysctl -w kernel.kptr_restrict=0
 iw dev wlan0 set power_save off 2>/dev/null || true
 
-awk -v names="${INTERFACE}|wlan" '$0 ~ names {gsub(":", "", $1); print $1}' /proc/interrupts |
+awk -v names="${IRQ_PATTERN}|wlan" '$0 ~ names {gsub(":", "", $1); print $1}' /proc/interrupts |
 while read -r irq; do
   [[ -n ${irq} && -w /proc/irq/${irq}/smp_affinity_list ]] || continue
   cp "/proc/irq/${irq}/smp_affinity_list" "${SNAPSHOT}/irq/${irq}"
@@ -73,7 +85,7 @@ fi
 
 cat > "${SNAPSHOT}/parameters" <<EOF
 role=${ROLE}
-interface=${INTERFACE}
+irq_pattern=${IRQ_PATTERN}
 network_cpu=${NETWORK_CPU}
 housekeeping_cpu=${HOUSEKEEPING_CPU}
 worker_cpu=${WORKER_CPU}
@@ -83,11 +95,20 @@ project_root=${PROJECT_ROOT}
 build_subdir=${BUILD_SUBDIR}
 EOF
 
+steered=0
 for affinity in "${SNAPSHOT}"/irq/*; do
   [[ -f ${affinity} ]] || continue
   irq=$(basename "${affinity}")
   observed=$(cat "/proc/irq/${irq}/smp_affinity_list")
   [[ ${observed} == "${NETWORK_CPU}" ]] || { echo "IRQ ${irq} affinity verification failed" >&2; exit 1; }
+  steered=$((steered + 1))
 done
+if ((steered == 0)); then
+  echo "No /proc/interrupts line matched '${IRQ_PATTERN}|wlan'; no IRQ was steered to CPU ${NETWORK_CPU}." >&2
+  echo "Inspect /proc/interrupts for the driver labels your kernel prints (typically bcmgenet and brcmfmac) and pass them instead." >&2
+  exit 1
+fi
 
-echo "Saved restorable state in ${SNAPSHOT}. CPUs: network=${NETWORK_CPU}, housekeeping=${HOUSEKEEPING_CPU}, worker=${WORKER_CPU}, receive/sender=${RECEIVER_CPU}."
+COMPLETED=1
+echo "Saved restorable state in ${SNAPSHOT}. Steered ${steered} IRQ line(s) matching '${IRQ_PATTERN}|wlan'."
+echo "CPUs: network=${NETWORK_CPU}, housekeeping=${HOUSEKEEPING_CPU}, worker=${WORKER_CPU}, receive/sender=${RECEIVER_CPU}."

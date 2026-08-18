@@ -90,25 +90,35 @@ multiplexing requires a rerun.
 ## Operator runbook
 
 1. Install `git build-essential cmake libgtest-dev python3-venv chrony ethtool
-   iproute2 linux-perf libcap2-bin`, configure the direct NetworkManager `/30` profile with
-   `ipv4.never-default yes` and IPv6 disabled, then save `ping -I eth0`,
-   `ethtool`, `chronyc tracking`, and `chronyc sources -v` output.
+   iproute2 linux-perf libcap2-bin iw`, configure the direct `/30` link through
+   DietPi's ifupdown files (`/etc/network/interfaces.d/nll-data`, static address,
+   no gateway or DNS, so the only default route stays on `wlan0`) with IPv6
+   disabled on `eth0`, then save `ping -I eth0`, `ethtool`, `chronyc tracking`,
+   and `chronyc sources -v` output.
 2. Check out the same frozen commit on both Pis, create `.venv`, install
    requirements, and run `cmake --preset pi4-release`, `cmake --build --preset
    pi4-release`, `ctest --preset pi4-release`, and `.venv/bin/python -m pytest
    -q`. Build/run the `tsan` preset before performance work.
-3. From the repository root, run `sudo scripts/setup_env.sh receiver eth0` on
-   the receiver and the same command with `sender` on the sender. The script
-   snapshots/restores governor, IRQ, socket/perf security, Wi-Fi power, and
-   receiver capability state, and applies `CAP_SYS_NICE` to final receiver
-   binaries. Edit only management Wi-Fi addresses and the frozen
-   commit in the distributed config.
-4. Run `./run_lab.sh --config config_distributed.yaml --preflight`. It aborts
+3. From the repository root, run
+   `sudo scripts/setup_env.sh receiver 'bcmgenet|brcmfmac'` on the receiver and
+   the same command with `sender` on the sender. The second argument is an
+   extended regular expression matched against `/proc/interrupts`, not an
+   interface name: the Pi 4 kernel labels these IRQs after their drivers. The
+   script snapshots/restores governor, IRQ, socket/perf security, Wi-Fi power,
+   and receiver capability state, and applies `CAP_SYS_NICE` to final receiver
+   binaries. It does not change NIC offloads, coalescing, or ring sizes, and it
+   does not use `isolcpus`; CPU roles are enforced by IRQ steering plus the
+   affinities the harness passes to each binary. Edit only management Wi-Fi
+   addresses and the frozen commit in the distributed config.
+4. Run `./run_lab.sh --config config_sender_qualification.yaml --preflight`,
+   then the qualification and pilot sessions of campaigns 1 and 2, freeze the
+   passing sender in a new commit, and only then run
+   `./run_lab.sh --config config_distributed.yaml --preflight`. Preflight aborts
    for dirty/wrong commits, failed tests, missing perf/capability, unsynchronized
    clocks, throttle flags, or a link other than 1 Gb/s full duplex.
 5. Run the measurement config unattended. Inspect qualification validity only;
    the harness freezes eligible rates. Do not change tuning or use the network.
-6. Prepare profiling with `python analysis/profile_tools.py prepare SESSION
+6. Prepare profiling with `.venv/bin/python analysis/profile_tools.py prepare SESSION
    config_distributed.yaml profile_config.yaml`, run that generated config, then
    create `profile_summary.csv` with `profile_tools.py summarize`.
 7. Restore both machines with `sudo scripts/restore_env.sh`. Validate archived

@@ -2,7 +2,7 @@
 # preserve that session and retry a fresh session with 25, then 50, then 100.
 global: &distributed_global
   topology: distributed_ethernet
-  benchmark_commit: SET_AFTER_FREEZING_COMMIT
+  benchmark_commit: d86d98344af07f849c911e2bccf8cd9c348241c2
   remote_project_root: /root/net-latency-lab
   local_project_root: .
   local_data_dir: results/sessions

@@ -183,6 +183,160 @@ def test_node_cleanup_uses_explicit_paths_and_tolerates_missing_files(tmp_path):
     ]
 
 
+def test_remote_node_resolves_openssh_alias(monkeypatch, tmp_path):
+    ssh_dir = tmp_path / ".ssh"
+    ssh_dir.mkdir()
+    identity = tmp_path / "id_test"
+    (ssh_dir / "config").write_text(
+        "Host nll-sender\n"
+        "  HostName 192.0.2.25\n"
+        "  User benchmark\n"
+        "  Port 2222\n"
+        f"  IdentityFile {identity}\n")
+    calls = []
+
+    class FakeClient:
+        def load_system_host_keys(self): pass
+        def set_missing_host_key_policy(self, policy): pass
+        def connect(self, **kwargs): calls.append(kwargs)
+        def get_transport(self): return None
+
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.setattr("main.paramiko.SSHClient", FakeClient)
+    node = RemoteNode("nll-sender", "fallback")
+    assert node.host == "nll-sender"
+    assert calls == [{"hostname": "192.0.2.25", "username": "benchmark",
+                      "port": 2222, "key_filename": [str(identity)],
+                      "timeout": 10, "allow_agent": True, "look_for_keys": True}]
+
+
+def fake_ssh_client(calls):
+    class FakeClient:
+        def load_system_host_keys(self): pass
+        def set_missing_host_key_policy(self, policy): pass
+        def connect(self, **kwargs): calls.append(kwargs)
+        def get_transport(self): return None
+    return FakeClient
+
+
+@pytest.mark.parametrize("config_text", [None, "Host other\n  HostName 192.0.2.9\n"])
+def test_remote_node_falls_back_when_no_alias_matches(monkeypatch, tmp_path, config_text):
+    if config_text is not None:
+        (tmp_path / ".ssh").mkdir()
+        (tmp_path / ".ssh" / "config").write_text(config_text)
+    calls = []
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.setattr("main.paramiko.SSHClient", fake_ssh_client(calls))
+    RemoteNode("192.0.2.25", "benchmark")
+    assert calls == [{"hostname": "192.0.2.25", "username": "benchmark",
+                      "timeout": 10, "allow_agent": True, "look_for_keys": True}]
+
+
+def test_remote_node_uses_proxycommand_and_rejects_unsupported_proxyjump(monkeypatch, tmp_path):
+    (tmp_path / ".ssh").mkdir()
+    (tmp_path / ".ssh" / "config").write_text(
+        "Host nll-receiver\n"
+        "  HostName 192.0.2.26\n"
+        "  ProxyCommand /bin/true %h %p\n"
+        "Host nll-jumped\n"
+        "  HostName 192.0.2.27\n"
+        "  ProxyJump bastion\n")
+    calls, proxies = [], []
+    monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.setattr("main.paramiko.SSHClient", fake_ssh_client(calls))
+    monkeypatch.setattr("main.paramiko.ProxyCommand",
+                        lambda command: proxies.append(command) or f"sock:{command}")
+    RemoteNode("nll-receiver", "benchmark")
+    assert proxies == ["/bin/true 192.0.2.26 22"]
+    assert calls[0]["sock"] == "sock:/bin/true 192.0.2.26 22"
+    assert calls[0]["hostname"] == "192.0.2.26"
+    with pytest.raises(RuntimeError, match="ProxyJump"):
+        RemoteNode("nll-jumped", "benchmark")
+
+
+def test_remote_exec_drains_both_streams_before_reading_exit_status():
+    order = []
+
+    class FakeChannel:
+        def recv_exit_status(self):
+            order.append("status"); return 0
+        def close(self):
+            order.append("close")
+
+    class FakeStream:
+        def __init__(self, name, payload, channel=None):
+            self.name, self.payload, self.channel = name, payload, channel
+        def read(self):
+            order.append(self.name); return self.payload
+
+    channel = FakeChannel()
+    stdout = FakeStream("stdout", b" payload\n", channel)
+    stderr = FakeStream("stderr", b"noise")
+    remote = object.__new__(RemoteNode)
+    remote.client = type("Client", (), {"exec_command": staticmethod(
+        lambda command, timeout=None: (None, stdout, stderr))})()
+
+    assert remote._exec("echo payload") == "payload"
+    assert order.index("status") > order.index("stdout")
+    assert order.index("status") > order.index("stderr")
+
+
+def test_remote_exec_timeout_closes_the_channel_and_reports_failure():
+    class FakeChannel:
+        def __init__(self): self.closed = False
+        def close(self): self.closed = True
+        def recv_exit_status(self): raise AssertionError("must not block on a stalled read")
+
+    class FakeStream:
+        def __init__(self, channel=None, payload=b""):
+            self.channel, self.payload = channel, payload
+        def read(self):
+            if self.channel is not None:
+                raise TimeoutError("timed out")
+            return self.payload
+
+    channel = FakeChannel()
+    stdout, stderr = FakeStream(channel), FakeStream()
+    remote = object.__new__(RemoteNode)
+    remote.client = type("Client", (), {"exec_command": staticmethod(
+        lambda command, timeout=None: (None, stdout, stderr))})()
+    with pytest.raises(subprocess.TimeoutExpired):
+        remote._exec("sleep 600", timeout=0.05)
+    assert channel.closed
+
+
+def test_remote_launch_failure_kills_the_orphaned_workload():
+    remote = object.__new__(RemoteNode)
+    commands = []
+
+    def fake_exec(command, timeout=30.0):
+        commands.append(command)
+        return "4100"
+
+    remote._exec = fake_exec
+    with pytest.raises(RuntimeError, match="invalid PIDs"):
+        remote.start_process(["/project/receiver"], "/tmp/run.log")
+    assert "kill -KILL" in commands[1] and "/tmp/run.log.pid" in commands[1]
+
+
+def test_remote_wait_tolerates_a_status_file_that_is_not_written_yet(tmp_path):
+    remote = object.__new__(RemoteNode)
+
+    def local_shell_exec(command, timeout=30.0):
+        return subprocess.run(["sh", "-c", command], check=True, capture_output=True,
+                              text=True, timeout=timeout).stdout.strip()
+
+    remote._exec = local_shell_exec
+    log_path = str(tmp_path / "empty-status.log")
+    status_path = Path(f"{log_path}.status")
+    status_path.write_text("")
+    handle = ProcessHandle(os.getpid(), ["receiver"], log_path, monitor_pid=os.getpid())
+    with pytest.raises(subprocess.TimeoutExpired):
+        remote.wait_process(handle, 0.2)
+    status_path.write_text("0")
+    assert remote.wait_process(handle, 1.0) == 0
+
+
 def test_remote_process_tracks_and_signals_child_pid_before_reading_status():
     remote = object.__new__(RemoteNode)
     commands = []
@@ -203,7 +357,7 @@ def test_remote_process_tracks_and_signals_child_pid_before_reading_status():
     remote.signal_process(handle, signal.SIGINT)
     assert commands[1] == "kill -INT -4200 2>/dev/null || true"
     assert remote.wait_process(handle, 1.0) == 0
-    assert commands[2].startswith("if test -f /tmp/run.log.status;")
+    assert commands[2].startswith("if test -s /tmp/run.log.status;")
     assert "kill -0 4100" in commands[2]
 
 

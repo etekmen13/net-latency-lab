@@ -19,6 +19,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -160,17 +161,16 @@ class NodeController:
         pass
 
     def read_counter(self, command: Sequence[str], parser) -> dict[str, Any]:
-        try:
-            return {"value": int(parser(self.run(command))), "error": None}
-        except Exception as exc:
-            return {"value": None, "error": str(exc)}
+        return parse_counter(probe(self, command), parser)
 
     def snapshot_counters(self, interface: str) -> dict[str, dict[str, Any]]:
+        # /proc/net/snmp carries both UDP error counters, so it is sampled once:
+        # a second read would cost another round trip and pair the two counters
+        # with different instants.
+        snmp = probe(self, ["cat", "/proc/net/snmp"])
         counters = {
-            "udp_rcvbuf_errors": self.read_counter(
-                ["cat", "/proc/net/snmp"], parse_udp_rcvbuf_errors),
-            "udp_sndbuf_errors": self.read_counter(
-                ["cat", "/proc/net/snmp"], parse_udp_sndbuf_errors),
+            "udp_rcvbuf_errors": parse_counter(snmp, parse_udp_rcvbuf_errors),
+            "udp_sndbuf_errors": parse_counter(snmp, parse_udp_sndbuf_errors),
             "udp_socket_drops": self.read_counter(
                 ["cat", "/proc/net/udp"], parse_udp_socket_drops),
             "qdisc_drops": self.read_counter(
@@ -271,16 +271,64 @@ class RemoteNode(NodeController):
         if paramiko is None or SCPClient is None:
             raise RuntimeError("Distributed mode requires paramiko and scp")
         self.host = host
+        connection: dict[str, Any] = {"hostname": host, "username": user}
+        ssh_config_path = Path.home() / ".ssh" / "config"
+        if ssh_config_path.is_file():
+            ssh_config = paramiko.SSHConfig()
+            with ssh_config_path.open(encoding="utf-8") as handle:
+                ssh_config.parse(handle)
+            resolved = ssh_config.lookup(host)
+            connection["hostname"] = resolved.get("hostname", host)
+            connection["username"] = resolved.get("user", user)
+            if "port" in resolved:
+                connection["port"] = int(resolved["port"])
+            if resolved.get("identityfile"):
+                connection["key_filename"] = [
+                    str(Path(path).expanduser()) for path in resolved["identityfile"]]
+            if resolved.get("proxycommand"):
+                connection["sock"] = paramiko.ProxyCommand(resolved["proxycommand"])
+            elif resolved.get("proxyjump"):
+                # paramiko resolves ProxyCommand but never expands ProxyJump, so
+                # honouring it silently would connect straight to the target.
+                raise RuntimeError(
+                    f"ssh config ProxyJump for {host} is unsupported; use ProxyCommand")
         self.client = paramiko.SSHClient()
         self.client.load_system_host_keys()
         self.client.set_missing_host_key_policy(paramiko.RejectPolicy())
-        self.client.connect(host, username=user, timeout=10, allow_agent=True,
-                            look_for_keys=True)
+        self.client.connect(timeout=10, allow_agent=True, look_for_keys=True,
+                            **connection)
+        # An unattended campaign outlives transient management-link stalls only
+        # if a dead transport is detected instead of blocking a read forever.
+        transport = self.client.get_transport()
+        if transport is not None:
+            transport.set_keepalive(15)
 
     def _exec(self, command: str, timeout: float = 30.0) -> str:
+        # paramiko blocks forever in recv_exit_status() once a command fills the
+        # channel window, so both streams are drained to EOF first.  Draining
+        # only one still stalls a command that fills the shared window on the
+        # other, so stderr is consumed concurrently.  The channel timeout then
+        # bounds each read instead of being silently unenforceable.
         _stdin, stdout, stderr = self.client.exec_command(command, timeout=timeout)
+        errors: list[bytes] = []
+
+        def drain_stderr() -> None:
+            try:
+                errors.append(stderr.read())
+            except Exception:
+                pass
+
+        reader = threading.Thread(target=drain_stderr, daemon=True)
+        reader.start()
+        try:
+            output = stdout.read().decode()
+        except TimeoutError as exc:
+            stdout.channel.close()
+            raise subprocess.TimeoutExpired(command, timeout) from exc
+        finally:
+            reader.join(timeout)
         status = stdout.channel.recv_exit_status()
-        output, error = stdout.read().decode(), stderr.read().decode()
+        error = b"".join(errors).decode()
         if status != 0:
             raise RuntimeError(f"Remote command failed ({status}): {error.strip()}")
         return output.strip()
@@ -303,7 +351,7 @@ class RemoteNode(NodeController):
         launch = (f"nohup sh -c {shlex.quote(inner)} > {shlex.quote(log_path)} "
                   f"2>&1 < /dev/null & monitor=$!; "
                   f"while test ! -s {shlex.quote(ready_path)}; do "
-                  f"if test -f {shlex.quote(status_path)}; then "
+                  f"if test -s {shlex.quote(status_path)}; then "
                   f"code=$(cat {shlex.quote(status_path)}); wait \"$monitor\" 2>/dev/null || true; "
                   "exit \"$code\"; fi; "
                   "if ! kill -0 \"$monitor\" 2>/dev/null; then wait \"$monitor\"; exit $?; fi; "
@@ -312,10 +360,18 @@ class RemoteNode(NodeController):
                   (f"; printf ' %s' \"$(cat {shlex.quote(workload_pid_path)})\""
                    if workload_pid_path is not None else "") +
                   "; printf '\n'")
-        output = self._exec(launch).split()
-        expected_pids = 3 if workload_pid_path is not None else 2
-        if len(output) != expected_pids:
-            raise RuntimeError(f"Remote process launch returned invalid PIDs: {' '.join(output)}")
+        try:
+            output = self._exec(launch).split()
+            expected_pids = 3 if workload_pid_path is not None else 2
+            if len(output) != expected_pids:
+                raise RuntimeError(
+                    f"Remote process launch returned invalid PIDs: {' '.join(output)}")
+        except Exception:
+            # The workload may already be running; an orphan would hold the
+            # benchmark port and poison every later run of the campaign.
+            self._exec(f"pid=$(cat {shlex.quote(pid_path)} 2>/dev/null); "
+                       'test -n "$pid" && kill -KILL -"$pid" 2>/dev/null; true')
+            raise
         monitor_pid, child_pid = map(int, output[:2])
         workload_pid = int(output[2]) if workload_pid_path is not None else None
         return ProcessHandle(child_pid, list(command), log_path,
@@ -330,7 +386,7 @@ class RemoteNode(NodeController):
             monitor_check = (f"elif kill -0 {handle.monitor_pid} 2>/dev/null; then echo running; "
                              if handle.monitor_pid is not None else "")
             output = self._exec(
-                f"if test -f {shlex.quote(status_path)}; then cat {shlex.quote(status_path)}; "
+                f"if test -s {shlex.quote(status_path)}; then cat {shlex.quote(status_path)}; "
                 f"elif kill -0 {handle.pid} 2>/dev/null; then echo running; "
                 f"{monitor_check}"
                 "else echo exited; fi")
@@ -683,9 +739,19 @@ def safe_read_json(path: Path) -> dict[str, Any]:
     return value
 
 
-def probe(node: NodeController, command: Sequence[str]) -> dict[str, Any]:
+def probe(node: NodeController, command: Sequence[str],
+          timeout: float = 30.0) -> dict[str, Any]:
     try:
-        return {"value": node.run(command), "error": None}
+        return {"value": node.run(command, timeout=timeout), "error": None}
+    except Exception as exc:
+        return {"value": None, "error": str(exc)}
+
+
+def parse_counter(sample: dict[str, Any], parser) -> dict[str, Any]:
+    if sample["error"] is not None:
+        return {"value": None, "error": sample["error"]}
+    try:
+        return {"value": int(parser(sample["value"])), "error": None}
     except Exception as exc:
         return {"value": None, "error": str(exc)}
 
@@ -736,7 +802,7 @@ def build_node(node: NodeController, project_root: str,
                runtime: dict[str, Any]) -> None:
     preset = str(runtime.get("build_preset", "dev"))
     node.run(["cmake", "--preset", preset, "-S", project_root], timeout=120)
-    node.run(["cmake", "--build", str(binary_dir(project_root, runtime)), "-j2"], timeout=240)
+    node.run(["cmake", "--build", str(binary_dir(project_root, runtime)), "-j2"], timeout=900)
 
 
 def make_run_tuples(config: dict[str, Any]) -> tuple[list[RunTuple], list[RunTuple]]:
@@ -1039,10 +1105,13 @@ def execute_run(item: RunTuple, config: dict[str, Any], session_id: str,
         time.sleep(float(runtime["receiver_startup_seconds"]))
         if not receiver_node.process_exists(receiver_pid):
             raise RuntimeError(f"Receiver exited during startup: PID {receiver_pid}")
-        before_counters = receiver_node.snapshot_counters(interface)
-        before_state = run_state(receiver_node, interface)
         sender_interface = nodes["sender"].get("interface", interface)
+        # Slow state probes bracket the fast counter reads so that both counter
+        # snapshots sit as close to the timed interval as the SSH round trips
+        # allow; deltas are otherwise inflated by unrelated setup traffic.
+        before_state = run_state(receiver_node, interface)
         sender_before_state = run_state(sender_node, sender_interface)
+        before_counters = receiver_node.snapshot_counters(interface)
         sender_before_counters = sender_node.snapshot_counters(sender_interface)
         active_sender = sender_node.start_process(tx_command, sender_log)
         sender_handle = active_sender
@@ -1058,9 +1127,9 @@ def execute_run(item: RunTuple, config: dict[str, Any], session_id: str,
         if sender_status != 0:
             raise RuntimeError(f"Sender failed with status {sender_status}: PID {sender_handle.pid}")
         after_counters = receiver_node.snapshot_counters(interface)
+        sender_after_counters = sender_node.snapshot_counters(sender_interface)
         after_state = run_state(receiver_node, interface)
         sender_after_state = run_state(sender_node, sender_interface)
-        sender_after_counters = sender_node.snapshot_counters(sender_interface)
         receiver_handle = active_receiver
         receiver_status = shutdown_process(
             receiver_node, receiver_handle, float(runtime["shutdown_timeout_seconds"]))
@@ -1086,6 +1155,7 @@ def execute_run(item: RunTuple, config: dict[str, Any], session_id: str,
             sender_node.fetch_file(remote_pacing_trace, pacing_path)
             require_nonempty_file(pacing_path, "sender pacing trace")
         require_nonempty_file(rx_stats_path, "receiver stats")
+        require_nonempty_file(tx_stats_path, "sender stats")
         receiver_stats, sender_stats = safe_read_json(rx_stats_path), safe_read_json(tx_stats_path)
         counters = counter_deltas(before_counters, after_counters)
         sender_counters = counter_deltas(sender_before_counters, sender_after_counters)
@@ -1342,8 +1412,10 @@ def preflight(config: dict[str, Any]) -> dict[str, Any]:
                 "throttled": probe(node, ["sh", "-c", "vcgencmd get_throttled 2>/dev/null || false"]),
                 "capabilities": probe(node, ["getcap", *[str(binary_dir(root, role_runtime) / binary)
                     for binary in sorted(RECEIVER_BINARIES)]]) if role == "receiver" else {"value": "not applicable", "error": None},
-                "ctest": probe(node, ["ctest", "--test-dir", str(binary_dir(root, role_runtime)), "--output-on-failure"]),
-                "pytest": probe(node, [str(Path(root) / ".venv/bin/python"), "-m", "pytest", "-q"]),
+                "ctest": probe(node, ["ctest", "--test-dir", str(binary_dir(root, role_runtime)),
+                                      "--output-on-failure"], timeout=1800),
+                "pytest": probe(node, [str(Path(root) / ".venv/bin/python"), "-m", "pytest", "-q"],
+                                timeout=1800),
             }
             if node_config.get("interface"):
                 checks["link"] = probe(node, ["ethtool", node_config["interface"]])

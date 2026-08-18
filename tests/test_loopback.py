@@ -267,6 +267,9 @@ def test_sender_sendmmsg_batches_preserve_payload_sequence_and_sampling(
     port = free_port(); received = []; stop = threading.Event()
     def receive():
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server:
+            # This assertion counts every packet, so the socket must absorb the
+            # whole burst even when a loaded runner descheduled this thread.
+            server.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 8 * 1024 * 1024)
             server.bind(("127.0.0.1", port)); server.settimeout(0.02)
             while not stop.is_set():
                 try: received.append(server.recvfrom(65535)[0])
@@ -327,4 +330,6 @@ def test_sender_flood_mode_and_two_worker_sequences(binaries, tmp_path):
     assert len(stats["thread_outcomes"]) == 2
     sequences = [struct.unpack("!HBBIQ", payload[:16])[3] for payload in received]
     assert len(sequences) == len(set(sequences))
-    assert sequences and all(sequence < stats["successful_sends"] for sequence in sequences)
+    # Flood mode allocates a sequence per attempt from one shared counter, so a
+    # dropped attempt still consumes its number.
+    assert sequences and all(sequence < stats["attempted_sends"] for sequence in sequences)

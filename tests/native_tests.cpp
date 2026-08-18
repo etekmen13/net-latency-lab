@@ -57,6 +57,47 @@ TEST(SequenceTracker, CountsUniqueGapsDuplicatesAndReordering) {
   EXPECT_EQ(tracker.gaps(), 1U);
   EXPECT_EQ(tracker.duplicates(), 1U);
   EXPECT_EQ(tracker.reordered(), 1U);
+  EXPECT_EQ(tracker.out_of_window(), 0U);
+}
+
+// The bounded ring must stay exact for the stream the generator actually emits:
+// dense, monotonically increasing, far longer than the 65536-sequence window.
+TEST(SequenceTracker, BoundedRingStaysExactOverADenseStream) {
+  nll::SequenceTracker tracker;
+  constexpr std::uint32_t total = 400000; // ~6 full wraps of the ring
+  for (std::uint32_t value = 0; value < total; ++value) tracker.observe(value);
+  EXPECT_EQ(tracker.unique(), total);
+  EXPECT_EQ(tracker.gaps(), 0U);
+  EXPECT_EQ(tracker.duplicates(), 0U);
+  EXPECT_EQ(tracker.reordered(), 0U);
+  EXPECT_EQ(tracker.out_of_window(), 0U);
+}
+
+// Duplicates are still detected exactly while they remain inside the window,
+// and reordering within the window is counted without being mistaken for loss.
+TEST(SequenceTracker, DetectsDuplicatesAndReorderingInsideTheWindow) {
+  nll::SequenceTracker tracker;
+  for (std::uint32_t value = 0; value < 100000; ++value) tracker.observe(value);
+  EXPECT_TRUE(tracker.observe(100001U));  // leaves 100000 missing
+  EXPECT_FALSE(tracker.observe(99000U));  // duplicate, still inside the window
+  EXPECT_FALSE(tracker.observe(100001U)); // duplicate of the newest
+  EXPECT_TRUE(tracker.observe(100000U));  // fills the gap, counted as reordered
+  EXPECT_EQ(tracker.duplicates(), 2U);
+  EXPECT_EQ(tracker.reordered(), 1U);
+  EXPECT_EQ(tracker.gaps(), 0U);
+  EXPECT_EQ(tracker.out_of_window(), 0U);
+}
+
+// An arrival older than the retained window cannot be proven unique, so it is
+// reported separately rather than silently counted as a new packet.
+TEST(SequenceTracker, ReportsArrivalsOlderThanTheRetainedWindow) {
+  nll::SequenceTracker tracker;
+  for (std::uint32_t value = 0; value < 200000; ++value) tracker.observe(value);
+  EXPECT_EQ(tracker.out_of_window(), 0U);
+  EXPECT_TRUE(tracker.observe(5U)); // far below the retained 65536-wide window
+  EXPECT_EQ(tracker.out_of_window(), 1U);
+  EXPECT_EQ(tracker.duplicates(), 0U);
+  EXPECT_EQ(tracker.reordered(), 1U);
 }
 
 TEST(SPSCQueue, EmptyFullAndWraparound) {
@@ -132,6 +173,20 @@ TEST(SenderPacing, IntegerDeadlinesAndAdaptiveBatchesDoNotDrift) {
             2U);
   EXPECT_EQ(nll::sender::adaptive_batch_count(0, 1000, 2, 950'000, 64, 10'000),
             5U);
+}
+
+// The scheduling window, not --send-batch-max, sets the batch size whenever
+// fewer than send_batch_max packets are due inside it.  On the Pi 4 at 950k pps
+// this caps a nominal 64-message batch at 10 messages for --batch-window-us 10.
+TEST(SenderPacing, BatchWindowBindsBelowSendBatchMax) {
+  constexpr std::uint64_t limit = 100'000'000;
+  EXPECT_EQ(nll::sender::adaptive_batch_count(0, limit, 1, 950'000, 64, 10'000), 10U);
+  EXPECT_EQ(nll::sender::adaptive_batch_count(0, limit, 1, 950'000, 64, 50'000), 48U);
+  // Only a window wide enough to cover 64 packets lets send_batch_max bind.
+  EXPECT_EQ(nll::sender::adaptive_batch_count(0, limit, 1, 950'000, 64, 100'000), 64U);
+  // Worker striping divides the per-thread packet rate, so the same window
+  // admits proportionally fewer messages per worker.
+  EXPECT_EQ(nll::sender::adaptive_batch_count(0, limit, 3, 150'000, 64, 100'000), 6U);
 }
 
 TEST(SenderSubmission, PartialErrorsAndRetriesAreExplicit) {

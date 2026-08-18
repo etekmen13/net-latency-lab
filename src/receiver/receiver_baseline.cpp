@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
   stats.observed_socket_buffer_bytes = socket.observed_buffer_bytes();
   nll::SequenceTracker receive_sequences;
   nll::receiver::ProcessingStats processing;
-  std::byte buffer[65535];
+  std::byte buffer[nll::receiver::receive_slot_bytes];
 
   while (!stop_requested.load(std::memory_order_relaxed) &&
          (config.max_packets == 0 || stats.datagrams_received < config.max_packets)) {
@@ -111,6 +111,9 @@ int main(int argc, char **argv) {
     if (static_cast<std::size_t>(length) < sizeof(nll::message_header)) {
       ++stats.short_packets; continue;
     }
+    // recvfrom() silently truncates to the slot and reports the copied length,
+    // so a datagram that exactly fills the slot is the only observable signal.
+    if (static_cast<std::size_t>(length) == sizeof(buffer)) ++stats.truncated_packets;
     nll::message_header message{};
     std::memcpy(&message, buffer, sizeof(message));
     message.to_host();

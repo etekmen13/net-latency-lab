@@ -23,6 +23,15 @@
 
 namespace nll::receiver {
 
+// Every receiver copies out of the kernel into a slot of exactly this size, so
+// that the per-packet copy cost is identical across the three architectures.
+// receiver_baseline previously read into 65535 bytes while the two recvmmsg
+// receivers read into sizeof(message_header) == 16, truncating every datagram:
+// the "optimized" variants therefore copied four times less per packet than the
+// baseline they are compared against. A datagram longer than this is counted in
+// truncated_packets rather than silently accepted.
+constexpr std::size_t receive_slot_bytes = 2048;
+
 struct Config {
   std::string variant;
   std::uint16_t port = 49200;
@@ -53,12 +62,15 @@ struct Stats {
   std::uint64_t receive_sequence_gaps = 0;
   std::uint64_t receive_duplicates = 0;
   std::uint64_t receive_reordered = 0;
+  std::uint64_t receive_out_of_window = 0;
   std::uint64_t processed_packets = 0;
   std::uint64_t unique_processed_packets = 0;
   std::uint64_t processed_sequence_gaps = 0;
   std::uint64_t processed_duplicates = 0;
   std::uint64_t processed_reordered = 0;
+  std::uint64_t processed_out_of_window = 0;
   std::uint64_t short_packets = 0;
+  std::uint64_t truncated_packets = 0;
   std::uint64_t invalid_magic = 0;
   std::uint64_t unsupported_version = 0;
   std::uint64_t spsc_overflow = 0;
@@ -176,6 +188,7 @@ inline void merge_processing(Stats &stats, const ProcessingStats &processing) {
   stats.processed_sequence_gaps = processing.sequences.gaps();
   stats.processed_duplicates = processing.sequences.duplicates();
   stats.processed_reordered = processing.sequences.reordered();
+  stats.processed_out_of_window = processing.sequences.out_of_window();
   stats.first_processing_mono_ns = processing.first_processing_mono_ns;
   stats.last_processing_mono_ns = processing.last_processing_mono_ns;
 }
@@ -199,9 +212,12 @@ inline bool write_stats(const Config &config, const Stats &stats,
       static_cast<unsigned long long>(config.work_ns), static_cast<unsigned long long>(config.sample_every));
   NLL_U64(datagrams_received); NLL_U64(valid_packets); NLL_U64(unique_valid_packets);
   NLL_U64(receive_sequence_gaps); NLL_U64(receive_duplicates); NLL_U64(receive_reordered);
+  NLL_U64(receive_out_of_window);
   NLL_U64(processed_packets); NLL_U64(unique_processed_packets);
   NLL_U64(processed_sequence_gaps); NLL_U64(processed_duplicates); NLL_U64(processed_reordered);
-  NLL_U64(short_packets); NLL_U64(invalid_magic); NLL_U64(unsupported_version); NLL_U64(spsc_overflow);
+  NLL_U64(processed_out_of_window);
+  NLL_U64(short_packets); NLL_U64(truncated_packets);
+  NLL_U64(invalid_magic); NLL_U64(unsupported_version); NLL_U64(spsc_overflow);
   NLL_U64(socket_errors); NLL_U64(receive_syscalls); NLL_U64(sampled_packets);
   NLL_U64(first_receive_mono_ns); NLL_U64(last_receive_mono_ns);
   NLL_U64(first_processing_mono_ns); NLL_U64(last_processing_mono_ns);
@@ -308,6 +324,7 @@ inline void finalize_receive_sequences(Stats &stats, const nll::SequenceTracker 
   stats.receive_sequence_gaps = sequences.gaps();
   stats.receive_duplicates = sequences.duplicates();
   stats.receive_reordered = sequences.reordered();
+  stats.receive_out_of_window = sequences.out_of_window();
 }
 
 inline nll::thread::AffinityOutcome apply_affinity(int cpu) {

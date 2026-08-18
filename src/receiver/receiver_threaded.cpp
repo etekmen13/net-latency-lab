@@ -73,6 +73,18 @@ int main(int argc, char **argv) {
     }
   }
   if (optind != argc || !nll::receiver::validate_scheduler(config)) return 2;
+  // The worker inherits the receiver's affinity mask, which is applied before
+  // the thread is created.  Pinning the receiver without also placing the
+  // worker silently lands both on one core, where the worker's busy-poll starves
+  // ingress -- and does so fatally once both are promoted to a realtime policy.
+  if (config.cpu >= 0 && config.worker_cpu < 0) {
+    std::fprintf(stderr, "--cpu requires --worker-cpu; the worker would inherit the receiver core\n");
+    return 2;
+  }
+  if (config.worker_cpu >= 0 && config.worker_cpu == config.cpu) {
+    std::fprintf(stderr, "--worker-cpu must differ from --cpu\n");
+    return 2;
+  }
   if (config.output_path.has_parent_path()) { std::error_code ec; std::filesystem::create_directories(config.output_path.parent_path(), ec); if (ec) return 1; }
   std::signal(SIGINT, signal_handler);
   nll::receiver::ScopedSocket socket(config.socket_buffer_bytes);
@@ -117,7 +129,7 @@ int main(int argc, char **argv) {
   nll::SequenceTracker receive_sequences;
   std::vector<mmsghdr> messages(config.batch_size);
   std::vector<iovec> vectors(config.batch_size);
-  std::vector<std::array<std::byte, sizeof(nll::message_header)>> buffers(config.batch_size);
+  std::vector<std::array<std::byte, nll::receiver::receive_slot_bytes>> buffers(config.batch_size);
   for (std::size_t i = 0; i < messages.size(); ++i) {
     vectors[i] = {.iov_base = buffers[i].data(), .iov_len = buffers[i].size()};
     messages[i].msg_hdr.msg_iov = &vectors[i]; messages[i].msg_hdr.msg_iovlen = 1;
@@ -132,6 +144,7 @@ int main(int argc, char **argv) {
     if (received < 0) { if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) continue; ++stats.socket_errors; break; }
     for (int i = 0; i < received; ++i) {
       ++stats.datagrams_received;
+      if (messages[i].msg_hdr.msg_flags & MSG_TRUNC) ++stats.truncated_packets;
       if (messages[i].msg_len < sizeof(nll::message_header)) { ++stats.short_packets; continue; }
       nll::message_header message{}; std::memcpy(&message, buffers[i].data(), sizeof(message)); message.to_host();
       if (message.magic != 0x6584) { ++stats.invalid_magic; continue; }

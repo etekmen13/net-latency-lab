@@ -9,6 +9,12 @@
 #include <thread>
 #include <vector>
 
+// Must sit outside any namespace: including a system header inside
+// namespace nll::thread would drop every intrinsic declaration into it.
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
+#include <immintrin.h>
+#endif
+
 namespace nll::thread {
 
 struct AffinityOutcome {
@@ -114,16 +120,17 @@ inline SchedulerOutcome set_scheduler(const std::string &policy_name_requested,
   return outcome;
 }
 
-#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
-#include <immintrin.h>
-#endif
-
 // Portable CPU relax function
 inline void cpu_relax() {
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
   _mm_pause(); // Intel/AMD pause
 #elif defined(__aarch64__) || defined(__arm__)
-  __asm__ __volatile__("isb"); // ARM barrier/pause equivalent
+  // "yield" is the ARM spin-wait hint. This was previously "isb", an
+  // Instruction Synchronization Barrier, which flushes the pipeline rather than
+  // hinting -- materially more expensive, and used both in the SPSC worker's
+  // empty-queue poll and in the synthetic-work loop, where it coarsened the
+  // per-packet work quantum the experiment sets.
+  __asm__ __volatile__("yield");
 #else
   // Fallback for unknown architectures
   // asm volatile ("nop");

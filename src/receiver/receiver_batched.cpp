@@ -75,7 +75,7 @@ int main(int argc, char **argv) {
   nll::receiver::ProcessingStats processing;
   std::vector<mmsghdr> messages(config.batch_size);
   std::vector<iovec> vectors(config.batch_size);
-  std::vector<std::array<std::byte, sizeof(nll::message_header)>> buffers(config.batch_size);
+  std::vector<std::array<std::byte, nll::receiver::receive_slot_bytes>> buffers(config.batch_size);
   for (std::size_t i = 0; i < messages.size(); ++i) {
     vectors[i] = {.iov_base = buffers[i].data(), .iov_len = buffers[i].size()};
     messages[i].msg_hdr.msg_iov = &vectors[i]; messages[i].msg_hdr.msg_iovlen = 1;
@@ -90,6 +90,7 @@ int main(int argc, char **argv) {
     if (received < 0) { if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) continue; ++stats.socket_errors; break; }
     for (int i = 0; i < received; ++i) {
       ++stats.datagrams_received;
+      if (messages[i].msg_hdr.msg_flags & MSG_TRUNC) ++stats.truncated_packets;
       if (messages[i].msg_len < sizeof(nll::message_header)) { ++stats.short_packets; continue; }
       nll::message_header message{}; std::memcpy(&message, buffers[i].data(), sizeof(message)); message.to_host();
       if (message.magic != 0x6584) { ++stats.invalid_magic; continue; }

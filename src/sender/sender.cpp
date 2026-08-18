@@ -9,6 +9,7 @@
 #include <cerrno>
 #include <charconv>
 #include <cmath>
+#include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -24,6 +25,14 @@
 #include <vector>
 
 namespace {
+// SIGINT stops the workers between batches so partial runs still emit
+// statistics instead of dying silently.  main() reports a nonzero exit so a
+// harness cannot mistake an interrupted run for a completed one.
+std::atomic<bool> stop_requested{false};
+void signal_handler(int) { stop_requested.store(true, std::memory_order_relaxed); }
+
+enum class Mode { steady, burst, flood };
+
 struct Config {
   std::string destination = "127.0.0.1";
   std::uint16_t port = 49200;
@@ -139,13 +148,13 @@ std::string escape(std::string_view value) {
   return out;
 }
 
-std::uint64_t percentile(std::vector<std::uint64_t> values, double quantile) {
-  if (values.empty()) return 0;
+// Takes an already sorted sample; copying the vector per quantile used to
+// duplicate the whole lateness log three times at shutdown.
+std::uint64_t percentile(const std::vector<std::uint64_t> &sorted, double quantile) {
+  if (sorted.empty()) return 0;
   const auto index = static_cast<std::size_t>(
-      std::ceil(quantile * static_cast<double>(values.size())) - 1.0);
-  std::nth_element(values.begin(), values.begin() + std::min(index, values.size() - 1),
-                   values.end());
-  return values[std::min(index, values.size() - 1)];
+      std::ceil(quantile * static_cast<double>(sorted.size())) - 1.0);
+  return sorted[std::min(index, sorted.size() - 1)];
 }
 
 bool write_trace(const Config &config, const std::vector<WorkerStats> &workers) {
@@ -202,6 +211,7 @@ bool write_stats(const Config &config, Stats stats,
   const double elapsed_seconds = static_cast<double>(stats.elapsed_ns) / 1e9;
   const double achieved = elapsed_seconds > 0.0
       ? static_cast<double>(stats.successful_sends) / elapsed_seconds : 0.0;
+  std::sort(stats.lateness_ns.begin(), stats.lateness_ns.end());
   const auto p50 = percentile(stats.lateness_ns, .50);
   const auto p90 = percentile(stats.lateness_ns, .90);
   const auto p99 = percentile(stats.lateness_ns, .99);
@@ -231,6 +241,7 @@ bool write_stats(const Config &config, Stats stats,
       "  \"achieved_successful_send_pps\": %.6f,\n"
       "  \"start_mono_ns\": %llu,\n"
       "  \"scheduled_end_mono_ns\": %llu,\n"
+      "  \"interrupted\": %s,\n"
       "  \"last_errno\": %d,\n"
       "  \"requested_socket_buffer_bytes\": %d,\n"
       "  \"observed_socket_buffer_bytes\": %d,\n"
@@ -250,6 +261,7 @@ bool write_stats(const Config &config, Stats stats,
       static_cast<unsigned long long>(stats.error_returns),
       static_cast<unsigned long long>(stats.elapsed_ns), elapsed_seconds, achieved,
       static_cast<unsigned long long>(start_ns), static_cast<unsigned long long>(end_ns),
+      stop_requested.load(std::memory_order_relaxed) ? "true" : "false",
       stats.last_error, stats.requested_socket_buffer_bytes,
       stats.observed_socket_buffer_bytes,
       static_cast<unsigned long long>(stats.lateness_samples),
@@ -323,6 +335,13 @@ int connected_socket(const Config &config, WorkerStats &stats,
       ::setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &config.socket_buffer_bytes,
                    sizeof(config.socket_buffer_bytes)) < 0)
     std::fprintf(stderr, "SO_SNDBUF request failed: %s\n", std::strerror(errno));
+  // udp_sendmsg() turns a full-qdisc -ENOBUFS into a silent success unless
+  // IP_RECVERR is set (it only bumps Udp: SndbufErrors).  Without this the
+  // sender reports every dropped packet as "successfully sent": measured on the
+  // Pi 4 pair as 949,909 claimed pps against 376,686 pps actually on the wire.
+  const int recverr = 1;
+  if (::setsockopt(fd, IPPROTO_IP, IP_RECVERR, &recverr, sizeof(recverr)) < 0)
+    std::fprintf(stderr, "IP_RECVERR request failed: %s\n", std::strerror(errno));
   socklen_t length = sizeof(stats.observed_socket_buffer_bytes);
   if (::getsockopt(fd, SOL_SOCKET, SO_SNDBUF, &stats.observed_socket_buffer_bytes,
                    &length) < 0) stats.observed_socket_buffer_bytes = -1;
@@ -338,7 +357,7 @@ int connected_socket(const Config &config, WorkerStats &stats,
 void pace_until(std::uint64_t deadline) {
   for (;;) {
     const auto now = nll::mono_ns();
-    if (now >= deadline) return;
+    if (now >= deadline || stop_requested.load(std::memory_order_relaxed)) return;
     const auto remaining = deadline - now;
     if (remaining > 300'000) nll::sleep_ns(remaining - 100'000);
     else nll::thread::cpu_relax();
@@ -376,14 +395,29 @@ void run_worker(std::uint32_t worker_index, const Config &config,
   const auto end = start + duration_ns;
   const auto packet_limit = nll::sender::scheduled_packet_count(duration_ns,
                                                                  config.rate_pps);
+  // Resolve the mode once: comparing a std::string on every batch put a strcmp
+  // in the innermost pacing loop.
+  const Mode mode = config.mode == "flood" ? Mode::flood
+      : config.mode == "burst" ? Mode::burst : Mode::steady;
+  // One lateness sample and one trace record are appended per syscall.  Sizing
+  // them up front keeps reallocation out of the paced send loop.
+  const auto worker_packets = packet_limit / config.threads + 1;
+  const auto expected_batch = std::max<std::uint32_t>(1,
+      nll::sender::adaptive_batch_count(worker_index, packet_limit, config.threads,
+          config.rate_pps, config.send_batch_max, config.batch_window_us * 1000ULL));
+  const auto expected_syscalls = std::min<std::uint64_t>(
+      worker_packets / expected_batch + 1024, 1ULL << 21);
+  stats.lateness_ns.reserve(expected_syscalls);
+  if (!config.pacing_trace_path.empty()) stats.trace.reserve(expected_syscalls);
   std::uint64_t packet_index = worker_index;
-  while (socket_fd >= 0 && nll::mono_ns() < end &&
-         (config.mode == "flood" || packet_index < packet_limit)) {
+  while (socket_fd >= 0 && !stop_requested.load(std::memory_order_relaxed) &&
+         nll::mono_ns() < end &&
+         (mode == Mode::flood || packet_index < packet_limit)) {
     std::uint32_t count = 0;
-    std::uint64_t scheduled = nll::mono_ns();
-    if (config.mode == "flood") {
+    std::uint64_t scheduled = 0;
+    if (mode == Mode::flood) {
       count = config.send_batch_max;
-    } else if (config.mode == "burst") {
+    } else if (mode == Mode::burst) {
       count = static_cast<std::uint32_t>(std::min<std::uint64_t>(
           {config.send_batch_max, config.burst_size - packet_index % config.burst_size,
            packet_limit - packet_index}));
@@ -424,6 +458,7 @@ void run_worker(std::uint32_t worker_index, const Config &config,
       if (outcome.retry) {
         ++stats.error_returns;
         stats.last_error = saved_errno;
+        if (stop_requested.load(std::memory_order_relaxed)) break;
         continue;
       }
       if (outcome.failed) {
@@ -441,8 +476,12 @@ void run_worker(std::uint32_t worker_index, const Config &config,
       ++stats.batch_histogram[successful];
       const auto offset_index = packet_index +
           static_cast<std::uint64_t>(offset) * config.threads;
-      const auto offset_deadline = config.mode == "flood" ? invocation
-          : nll::sender::deadline_ns(start, offset_index, config.rate_pps);
+      // The unsplit steady batch already has its deadline; recomputing it here
+      // repeated a 128-bit division on every syscall.
+      const auto offset_deadline = mode == Mode::flood ? invocation
+          : (mode == Mode::steady && offset == 0)
+              ? scheduled
+              : nll::sender::deadline_ns(start, offset_index, config.rate_pps);
       const auto lateness = invocation > offset_deadline ? invocation - offset_deadline : 0;
       ++stats.lateness_samples;
       stats.lateness_sum_ns += lateness;
@@ -535,6 +574,7 @@ int main(int argc, char **argv) {
   if (::inet_pton(AF_INET, config.destination.c_str(), &destination.sin_addr) != 1) {
     std::fprintf(stderr, "Invalid IPv4 address: %s\n", config.destination.c_str()); return 2;
   }
+  std::signal(SIGINT, signal_handler);
   std::vector<WorkerStats> workers(config.threads);
   std::atomic<std::uint64_t> next_sequence{0};
   std::atomic<std::uint64_t> start_ns{0};
@@ -577,5 +617,8 @@ int main(int argc, char **argv) {
   const bool trace_ok = write_trace(config, workers);
   const bool stats_ok = write_stats(config, std::move(stats), workers, start,
                                     start + duration_ns);
-  return trace_ok && stats_ok ? 0 : 1;
+  // An interrupted run is reported as a failure so a harness cannot mistake a
+  // truncated capture for a completed one; the statistics file is still written.
+  const bool interrupted = stop_requested.load(std::memory_order_relaxed);
+  return trace_ok && stats_ok && !interrupted ? 0 : 1;
 }

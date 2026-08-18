@@ -34,9 +34,17 @@ if(BUILD_TESTING)
   add_executable(native_tests tests/native_tests.cpp)
   target_link_libraries(native_tests PRIVATE nll_options GTest::gtest_main pthread)
   include(GoogleTest)
-  gtest_discover_tests(native_tests)
-  if(NLL_TSAN AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
-    find_program(SETARCH_EXECUTABLE setarch)
+  if(NLL_TSAN)
+    # gtest_discover_tests runs the instrumented binary during the build, where
+    # ThreadSanitizer aborts on the kernel's randomized mappings ("unexpected
+    # memory mapping").  The tsan test preset only selects the label-filtered
+    # spsc_stress entry below, which is launched under setarch -R, so discovery
+    # is not needed in this configuration.
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
+      find_program(SETARCH_EXECUTABLE setarch)
+    endif()
+  else()
+    gtest_discover_tests(native_tests)
   endif()
   if(SETARCH_EXECUTABLE)
     add_test(NAME spsc_stress COMMAND ${SETARCH_EXECUTABLE} x86_64 -R

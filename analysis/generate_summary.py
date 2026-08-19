@@ -217,6 +217,15 @@ def summarize_run(metadata: dict[str, Any], frame: pd.DataFrame,
     # run at 150 kpps. Record the strictly stronger condition alongside it so a
     # "zero loss" claim can mean exactly that.
     row["zero_loss_run"] = bool(application_loss == 0 and ingress_loss == 0)
+    # A negative one-way latency means a packet was recorded as arriving before it
+    # was sent, which is only possible if the two hosts' CLOCK_REALTIME disagree by
+    # at least that much. chrony's own "RMS offset" does not detect this: it
+    # measures servo smoothness, not accuracy, and is blind to path asymmetry --
+    # and here the NTP exchanges traverse the very link being saturated, so the
+    # asymmetry is load-dependent. Observed swinging over ~530 us between runs
+    # while same-host queue delay reproduced to 0.02 us. Any cross-host latency
+    # claim requires this to be False for every contributing run.
+    # (computed after _latency_fields below, which is what populates the minimum)
     # A run only qualifies when it actually carried traffic.  Without the
     # positive-traffic guards a zero-packet or zero-rate run scores
     # offered_pps == 0 >= 0.99 * 0 and application_loss_pct == 0, i.e. missing
@@ -228,6 +237,9 @@ def summarize_run(metadata: dict[str, Any], frame: pd.DataFrame,
         row["offered_pps"] >= .99 * row["requested_rate_pps"] and
         0 <= row["application_loss_pct"] <= .1)
     row.update(_latency_fields(frame))
+    minimum = row.get("receive_latency_min_us")
+    row["clock_offset_suspect"] = bool(
+        minimum is not None and pd.notna(minimum) and float(minimum) < 0)
     return row
 
 

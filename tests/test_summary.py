@@ -353,3 +353,23 @@ def test_claim_gate_refuses_loopback_data_entirely(tmp_path):
     measurement, profile = claim_sessions(tmp_path, topology="local_loopback")
     with pytest.raises(ValueError, match="sustainable"):
         generate_claims(measurement, profile, tmp_path / "claim_evidence.csv")
+
+
+def test_negative_one_way_latency_flags_a_clock_offset():
+    """A packet cannot arrive before it was sent. A negative one-way latency means
+    the two hosts' clocks disagree by at least that much, which chrony's own RMS
+    offset does not detect: it measures servo smoothness, not accuracy, and is
+    blind to path asymmetry on the link being saturated."""
+    metadata = sustainable_metadata()
+    impossible = summarize_run(
+        metadata, synthetic_trace(200, np.full(200, -150.0)), Path("t.bin"))
+    assert impossible["receive_latency_min_us"] < 0
+    assert impossible["clock_offset_suspect"] is True
+
+    plausible = summarize_run(
+        metadata, synthetic_trace(200, np.full(200, 80.0)), Path("t.bin"))
+    assert plausible["receive_latency_min_us"] > 0
+    assert plausible["clock_offset_suspect"] is False
+
+    # A throughput run carries no trace at all; absence is not a clock problem.
+    assert summarize_run(metadata, pd.DataFrame(), Path("t.bin"))["clock_offset_suspect"] is False

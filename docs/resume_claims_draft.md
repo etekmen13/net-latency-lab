@@ -130,6 +130,20 @@ Bring these out when they dig. Each is a complete story with a number.
   measured over 30 s can be an artifact of the run being short. Checked by extending
   to 180 s at 97% of the measured knee: 32.4M packets, 0.000% loss, i.e. 6× the
   duration that established the knee with no loss accumulation.
+- **chrony's "RMS offset" is not accuracy, and it hid a 530 µs error.** The receiver
+  was disciplined directly to the sender over the benchmark link and reported
+  `RMS offset: 301 ns`, which looks like more than enough to measure a one-way
+  latency of tens of microseconds. It was not: measured one-way latencies came out
+  **negative** — down to −179.69 µs, i.e. packets recorded as arriving before they
+  were sent — and the zero point moved across a ~530 µs range between runs, while the
+  *same-host* queue delay reproduced to 0.02 µs. The cause is that NTP assumes
+  symmetric path delay, and chrony's exchanges traverse the very link being saturated
+  at 100k pps: the receiver's TX path is idle while its RX path is loaded, so the
+  asymmetry is large and load-dependent. RMS offset measures servo smoothness, not
+  accuracy, and is structurally blind to this. Detected only because a physically
+  impossible value appeared; now guarded by an automatic `clock_offset_suspect` flag.
+  **The lesson generalises: synchronising over the link you are measuring makes your
+  clock error a function of your independent variable.**
 - **Detecting that the receivers were never saturated.** All three variants tied at
   ~386 kpps, which looked like a receiver limit and was actually the *generator's*
   ceiling. A tie across architectures is a signature of a sender-limited sweep. This
@@ -166,17 +180,13 @@ Bring these out when they dig. Each is a complete story with a number.
 ## Tier 3 — honest assessment: probably not worth a bullet
 
 **1. Chrony peer-sync instead of public NTP.** The receiver is disciplined directly
-to the sender over the benchmark link rather than to internet NTP, achieving **301 ns
-RMS offset** (vs the sender's own 543 µs against WAN NTP), which makes cross-host
-one-way latency measurable without hardware timestamping.
+to the sender over the benchmark link rather than to internet NTP, reporting **301 ns
+RMS offset**.
 
-*Verdict:* excellent engineering, weak resume line. Standing alone it reads as "I
-configured NTP correctly," and a reviewer cannot tell the difference between that and
-what you actually did. It is strong as a **clause inside the latency bullet** — "…
-measured with the receiver disciplined to the sender at 301 ns RMS, with the residual
-path asymmetry reported as an uncertainty budget rather than claimed away" — because
-there it is doing work: it is the reason the latency number is trustworthy. Keep it
-in your pocket for the inevitable "how do you know your clocks agreed?"
+*Verdict:* do not use as a claim of measurement quality — the 301 ns is misleading,
+and the story is much better told as a failure found. See Tier 2, "chrony's RMS
+offset is not accuracy". Standing alone it also reads as "I configured NTP
+correctly," which a reviewer cannot distinguish from what was actually done.
 
 **2. The SSH/orchestration engineering.** Reducing 11 SSH round trips per counter
 snapshot to 1, bounded transport-only retry, the no-control-traffic-during-timed-

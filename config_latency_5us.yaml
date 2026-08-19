@@ -1,11 +1,28 @@
 # Stage D6: the sync-free tail-latency campaign at W* = 5 us.
 #
-# The claimed quantity is application_queue_delay = processing_start_ts - rx_ts.
-# Both timestamps are taken on the receiver host, so the difference is a single
-# subtraction with no cross-host synchronisation in it. receive_latency and
-# total_application_latency are NOT claimable: they cross hosts via
-# CLOCK_REALTIME, and chrony's residual wander (tens of microseconds) is
-# comparable to the inter-variant differences being measured.
+# The primary claimed quantity is application_queue_delay =
+# processing_start_ts - rx_ts. Both timestamps are taken on the receiver host,
+# so the difference is a single subtraction with no cross-host synchronisation
+# in it at all, and it needs no argument to defend.
+#
+# receive_latency and total_application_latency cross hosts via CLOCK_REALTIME,
+# and are reported as SECONDARY evidence with an explicit uncertainty budget.
+# The pair is far better synchronised than a cross-host measurement usually is,
+# because the receiver is disciplined directly to the sender over the benchmark
+# link rather than to public NTP. Measured in the D0 session
+# (results/sessions/session_20260818T161946_132709Z, session_manifest.json):
+#
+#   receiver: Reference ID 192.168.50.1, RMS offset 301 ns, last offset 55 ns,
+#             skew 0.010 ppm, update interval 4.0 s
+#
+# i.e. about two orders of magnitude finer than the inter-variant differences
+# being resolved. Two limits remain and must be stated with any such number:
+# 301 ns is chrony's own estimate of its offset and excludes systematic path
+# asymmetry (NTP assumes symmetric delay; with software timestamping the TX and
+# RX paths differ, giving a constant bias plausibly of a few microseconds that
+# cancels between variants but not in an absolute claim), and the sender itself
+# is disciplined to WAN NTP on a ~2000 s poll, which is the only moving part in
+# the reference timescale.
 #
 # sample_every is 101, not 100, and the choice is load-bearing. rx_ts is captured
 # once per recvmmsg call, so a packet's queue delay is a near-linear function of

@@ -99,6 +99,86 @@ def figure_profiles(profile: pd.DataFrame, output: Path) -> Path:
     return output
 
 
+# A pipelined receiver is given a second core, so absolute capacity alone flatters
+# it. Every figure that reports capacity also reports capacity per allocated core.
+ALLOCATED_CORES = {"baseline": 1, "batched": 1, "threaded": 2}
+RECEIVER_ORDER = ("baseline", "batched", "threaded")
+
+
+def zero_loss_knees(per_run: pd.DataFrame, campaign: str) -> pd.DataFrame:
+    """Highest offered rate each receiver sustained with zero application loss.
+
+    Uses the strict zero_loss_run column rather than the campaign's 0.1% rule: a
+    figure captioned "zero loss" should mean zero, not 0.1% (which is 4,500
+    packets on a 30 s run at 150 kpps).
+    """
+    data = per_run[(per_run.campaign == campaign) &
+                   (per_run.topology != "local_loopback")]
+    if "run_valid" in data.columns:
+        data = data[data.run_valid.astype(bool)]
+    grouped = data.groupby(["receiver", "batch_size", "requested_rate_pps"], as_index=False).agg(
+        repetitions=("run_id", "size"), all_zero_loss=("zero_loss_run", "all"))
+    passing = grouped[grouped.all_zero_loss]
+    if passing.empty:
+        raise ValueError(f"No configuration in campaign {campaign!r} sustained zero loss")
+    return passing.loc[passing.groupby(["receiver", "batch_size"]).requested_rate_pps.idxmax()]
+
+
+def figure_pareto(throughput_runs: pd.DataFrame, latency_runs: pd.DataFrame,
+                  output: Path, throughput_campaign: str = "work_5us",
+                  latency_campaign: str = "latency_5us",
+                  common_rate_pps: int | None = None) -> Path:
+    """Capacity against tail queueing delay, with the per-core view beside it.
+
+    The latency axis is application_queue_delay: processing_start_ts - rx_ts, both
+    taken on the receiver host, so it is a single subtraction with no cross-host
+    synchronisation in it. Cross-host latency is deliberately not plotted here.
+    """
+    knees = zero_loss_knees(throughput_runs, throughput_campaign).set_index("receiver")
+    latency = latency_runs[(latency_runs.campaign == latency_campaign) &
+                           (latency_runs.topology != "local_loopback")]
+    if common_rate_pps is None:
+        common_rate_pps = int(latency.requested_rate_pps.min())
+    matched = latency[latency.requested_rate_pps == common_rate_pps]
+    if matched.empty:
+        raise ValueError(f"No latency runs at the common rate {common_rate_pps}")
+    tails = matched.groupby("receiver").agg(
+        p50=("queue_delay_p50_us", "median"), p99=("queue_delay_p99_us", "median"),
+        p999=("queue_delay_p999_us", "median"), samples=("latency_sample_count", "sum"))
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    for receiver in RECEIVER_ORDER:
+        if receiver not in knees.index or receiver not in tails.index:
+            continue
+        knee = float(knees.loc[receiver, "requested_rate_pps"])
+        cores = ALLOCATED_CORES[receiver]
+        row = tails.loc[receiver]
+        for axis, x, xlabel in ((axes[0], knee, "Max zero-loss rate (packets/s)"),
+                                (axes[1], knee / cores, "Max zero-loss rate per allocated core")):
+            axis.errorbar(x, row.p999,
+                          yerr=[[max(row.p999 - row.p50, 0)], [0]],
+                          fmt="o", markersize=9, capsize=4)
+            axis.annotate(f"{receiver} (b={int(knees.loc[receiver,'batch_size'])}, "
+                          f"{cores} core{'s' if cores > 1 else ''})",
+                          (x, row.p999), textcoords="offset points",
+                          xytext=(8, 6), fontsize=9)
+            axis.set_xlabel(xlabel)
+    for axis in axes:
+        axis.set_yscale("log")
+        axis.set_ylabel("p99.9 application queueing delay (µs)\nlower bar = p50")
+        axis.grid(True, alpha=.3, which="both")
+    axes[0].set_title(f"Capacity vs tail queueing delay, measured at {common_rate_pps:,} pps")
+    axes[1].set_title("Same, per allocated core")
+    fig.suptitle("Higher and lower is better. The pipelined receiver buys capacity "
+                 "and loss observability with a second core and a longer tail.",
+                 fontsize=9, y=.02)
+    fig.tight_layout()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=180)
+    plt.close(fig)
+    return output
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("per_run_csv", type=Path)

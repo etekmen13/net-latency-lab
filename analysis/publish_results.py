@@ -12,7 +12,7 @@ from pathlib import Path
 import pandas as pd
 
 from generate_claim_evidence import generate as generate_claims
-from plot_paper_figs import figure_profiles, figure_throughput
+from plot_paper_figs import figure_pareto, figure_profiles, figure_throughput
 from profile_tools import validate_profile_session
 
 
@@ -27,7 +27,12 @@ def sha256(path: Path) -> str:
 def publish(measurement: Path, profile: Path, output: Path,
             campaigns: Sequence[str] = ("raw", "workload_10us"),
             claim_campaign: str | None = None,
-            claim_work_ns: int | None = None) -> Path:
+            claim_work_ns: int | None = None,
+            latency_session: Path | None = None,
+            latency_campaign: str = "latency_5us") -> Path:
+    """Export a completed session. `latency_session` is a SEPARATE session: its
+    runs use fewer repetitions than the five-per-tuple comparative rule, so it
+    must not be folded into `campaigns`."""
     campaigns = list(campaigns)
     claim_campaign = claim_campaign or campaigns[0]
     if claim_campaign not in campaigns:
@@ -64,6 +69,12 @@ def publish(measurement: Path, profile: Path, output: Path,
                     claim_campaign, claim_work_ns)
     figure_throughput(runs, output / "figure1_throughput_loss.png", campaigns)
     figure_profiles(profiles, output / "figure2_profile_mechanism.png")
+    if latency_session is not None:
+        latency_runs = pd.read_csv(latency_session / "per_run_summary.csv")
+        figure_pareto(runs, latency_runs, output / "figure3_capacity_vs_tail_latency.png",
+                      claim_campaign, latency_campaign)
+        (output / "latency_summary.csv").write_bytes(
+            (latency_session / "repetition_summary.csv").read_bytes())
     for report in profile.glob("**/*_perf_report.txt"):
         shutil.copy2(report, output / report.name)
     measurement_manifest = json.loads((measurement / "session_manifest.json").read_text())
@@ -90,6 +101,10 @@ if __name__ == "__main__":
                         help="campaign the resume claim is drawn from (default: the first)")
     parser.add_argument("--claim-work-ns", type=int, default=None,
                         help="restrict the claim to this per-packet work budget")
+    parser.add_argument("--latency-session", type=Path, default=None,
+                        help="separate session supplying the tail-latency figure")
+    parser.add_argument("--latency-campaign", default="latency_5us")
     args = parser.parse_args()
     print(publish(args.measurement_session, args.profile_session, args.output,
-                  args.campaigns, args.claim_campaign, args.claim_work_ns))
+                  args.campaigns, args.claim_campaign, args.claim_work_ns,
+                  args.latency_session, args.latency_campaign))

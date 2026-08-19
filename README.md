@@ -113,9 +113,15 @@ graceful profile shutdown, preserving receiver stats and finalized perf data.
 
 ## Publication boundary
 
-Publication produces one cleaned benchmark CSV, `claim_evidence.csv`, exactly
-two figures (throughput/loss and profile mechanism), environment data, profile
-reports, and checksums. A resume sentence is emitted only when all five runs
+Publication produces one cleaned benchmark CSV, `claim_evidence.csv`, environment
+data, profile reports, checksums, and two figures (throughput/loss and profile
+mechanism). Under `pi4-predeclared-v2` a third figure is added when a separate
+tail-latency session is supplied: capacity against p99.9 application queueing
+delay, plotted both absolutely and per allocated core, since a pipelined receiver
+is given a second core and absolute capacity alone flatters it. That figure plots
+only `processing_start_ts - rx_ts`, a single subtraction between two timestamps
+taken on the receiver host; cross-host latency is reported in the CSV with its
+synchronisation uncertainty and is not plotted as a claim. A resume sentence is emitted only when all five runs
 pass the ≤0.1% application-loss rule and profile counters support the proposed
 mechanism. Observations and explanations remain separate. Cross-host
 `CLOCK_REALTIME` latency is synchronization-limited and is not used for a claim

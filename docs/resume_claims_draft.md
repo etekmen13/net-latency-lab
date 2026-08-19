@@ -77,14 +77,33 @@ about a system quantitatively before touching it, which is the actual job.
 Why it lands: finding a bias that would have made your result look *better*, and
 removing it, is the single most credible thing an experimentalist can report.
 
-**5. Tail latency.** `[PENDING — D6 campaign not yet run]`
+**5. Tail latency — the throughput/latency exchange rate.** *(verified, D6)*
 
-> p99.9 application queueing delay of __ µs at matched offered load; quantified the
-> throughput-versus-tail-latency exchange rate of syscall batching across batch
-> sizes.
+> Quantified what syscall batching costs in the tail: at a matched 100,000 pps,
+> p99.9 application queueing delay rose from **0.30 µs** (`recvfrom`) to **26.9 µs**
+> with `recvmmsg`(64) — a 91× tail penalty for a 1.08× capacity gain. Measured as a
+> single subtraction between two timestamps on the receiver host, 534,654 samples per
+> configuration, sampled at a stride coprime with the batch size to avoid aliasing
+> against in-batch position.
 
-This is the most quant-shaped artifact the project can produce and is the one gap
-in the current set. Fill from the `latency_5us` campaign.
+And the finding that makes the whole project honest, at each variant's *own* capacity
+(95% of its measured knee):
+
+| receiver | rate | p50 | p99 | p99.9 |
+|---|---|---|---|---|
+| `recvfrom` | 144k | 0.222 µs | 0.278 | **0.296** |
+| `recvmmsg` b64 | 156k | 16.1 | 37.4 | **133** |
+| `recvmmsg` + SPSC | 180k | 21.9 | 49.3 | **12,737** |
+
+> The pipelined receiver does not remove loss — it converts it into latency. It never
+> drops a packet in the kernel, but near capacity its p99.9 queueing delay reaches
+> 12.7 ms, four orders of magnitude above the synchronous baseline. For a trading
+> system a packet delivered 12.7 ms late is usually worse than one dropped and known
+> to be dropped.
+
+Why it lands: it is the actual engineering trade, stated against you. It also
+explains the burstiness margin (Tier 2) — the queue that absorbs bursts to give the
+higher zero-loss knee is the same queue that produces the tail.
 
 ---
 
@@ -222,11 +241,12 @@ weakness is what makes the rest credible.
 | 7,209,416 pause frames, 51,314 `rx_missed_errors` | `ethtool -S eth0`, both nodes, pre-fix |
 | chrony 301 ns RMS | `session_manifest.json` → `environment.receiver.chrony_tracking` |
 | 44–59% reordering under multi-threaded send | scratch probes, 2026-08-17/18 |
+| queue delay 0.296 / 26.87 / 26.96 µs at 100k pps; 0.296 / 133 / 12,737 µs at capacity | `session_20260819T023815_913719Z` (D6), 3 reps x 180 s, 534,654 samples/config |
+| realized work 5.185 µs against a 5.000 µs request | same session, `processing_time_p50_us` |
 | 563 KiB sequence-tracker working set | 30 s × 150 kpps ÷ 4096 per block × 512 B |
 
 ## Still to come
 
-- **D6 latency campaign** → fills Tier 1 item 5 and the Pareto figure.
 - **A2 SPSC optimization** → `buffer_[0]` shares a cache line with `tail_`, and
   `try_alloc`/`front()` load the peer index on every element (one cross-core
   coherence miss per packet per side). Worth ~5.7%. **Do not claim until measured.**

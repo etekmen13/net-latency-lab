@@ -146,33 +146,46 @@ def figure_pareto(throughput_runs: pd.DataFrame, latency_runs: pd.DataFrame,
         p50=("queue_delay_p50_us", "median"), p99=("queue_delay_p99_us", "median"),
         p999=("queue_delay_p999_us", "median"), samples=("latency_sample_count", "sum"))
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5.6))
+    placed: list[list[tuple[float, float]]] = [[], []]
     for receiver in RECEIVER_ORDER:
         if receiver not in knees.index or receiver not in tails.index:
             continue
         knee = float(knees.loc[receiver, "requested_rate_pps"])
         cores = ALLOCATED_CORES[receiver]
         row = tails.loc[receiver]
-        for axis, x, xlabel in ((axes[0], knee, "Max zero-loss rate (packets/s)"),
-                                (axes[1], knee / cores, "Max zero-loss rate per allocated core")):
-            axis.errorbar(x, row.p999,
-                          yerr=[[max(row.p999 - row.p50, 0)], [0]],
-                          fmt="o", markersize=9, capsize=4)
-            axis.annotate(f"{receiver} (b={int(knees.loc[receiver,'batch_size'])}, "
-                          f"{cores} core{'s' if cores > 1 else ''})",
-                          (x, row.p999), textcoords="offset points",
-                          xytext=(8, 6), fontsize=9)
-            axis.set_xlabel(xlabel)
-    for axis in axes:
+        label = (f"{receiver}  b={int(knees.loc[receiver, 'batch_size'])}, "
+                 f"{cores} core{'s' if cores > 1 else ''}")
+        for index, (axis, x) in enumerate(((axes[0], knee), (axes[1], knee / cores))):
+            axis.errorbar(x, row.p999, yerr=[[max(row.p999 - row.p50, 0)], [0]],
+                          fmt="o", markersize=9, capsize=4, linewidth=2)
+            placed[index].append((x, row.p999))
+            axis.annotate(label, (x, row.p999), textcoords="offset points",
+                          xytext=(0, 14), fontsize=9, ha="center")
+    for index, axis in enumerate(axes):
         axis.set_yscale("log")
-        axis.set_ylabel("p99.9 application queueing delay (µs)\nlower bar = p50")
+        # Log scale plus a top annotation needs explicit headroom, or the labels
+        # collide with the frame.
+        axis.margins(x=.30)
+        low = min(y for _, y in placed[index])
+        high = max(y for _, y in placed[index])
+        axis.set_ylim(low * .35, high * 4.0)
+        axis.xaxis.set_major_formatter(
+            plt.FuncFormatter(lambda value, _pos: f"{value:,.0f}"))
+        axis.tick_params(axis="x", rotation=20)
+        axis.set_ylabel("p99.9 application queueing delay (µs)\n(bar extends down to p50)")
         axis.grid(True, alpha=.3, which="both")
-    axes[0].set_title(f"Capacity vs tail queueing delay, measured at {common_rate_pps:,} pps")
-    axes[1].set_title("Same, per allocated core")
-    fig.suptitle("Higher and lower is better. The pipelined receiver buys capacity "
-                 "and loss observability with a second core and a longer tail.",
-                 fontsize=9, y=.02)
-    fig.tight_layout()
+    axes[0].set_xlabel("Max zero-loss rate (packets/s)")
+    axes[1].set_xlabel("Max zero-loss rate per allocated core (packets/s)")
+    axes[0].set_title(f"Capacity vs tail queueing delay\n(delay measured at a common {common_rate_pps:,} pps)")
+    axes[1].set_title("Same, divided by allocated cores")
+    fig.text(.5, .015,
+             "Better is right and down. The pipelined receiver buys capacity and exact loss "
+             "attribution with a second core and a longer tail;\nper core it is the slowest of "
+             "the three. Queueing delay is processing_start - rx, both timestamps taken on the "
+             "receiver host.",
+             ha="center", fontsize=8.5)
+    fig.tight_layout(rect=(0, .085, 1, 1))
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, dpi=180)
     plt.close(fig)

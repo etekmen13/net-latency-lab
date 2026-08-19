@@ -1,0 +1,475 @@
+{
+  "measurement": {
+    "receiver": {
+      "hostname": {
+        "value": "nll-receiver",
+        "error": null
+      },
+      "kernel": {
+        "value": "Linux nll-receiver 6.18.39+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.39-1+rpt1 (2026-07-29) aarch64 GNU/Linux",
+        "error": null
+      },
+      "cpu": {
+        "value": "Architecture:                            aarch64\nCPU op-mode(s):                          32-bit, 64-bit\nByte Order:                              Little Endian\nCPU(s):                                  4\nOn-line CPU(s) list:                     0-3\nVendor ID:                               ARM\nModel name:                              Cortex-A72\nModel:                                   3\nThread(s) per core:                      1\nCore(s) per cluster:                     4\nSocket(s):                               -\nCluster(s):                              1\nStepping:                                r0p3\nFrequency boost:                         disabled\nCPU(s) scaling MHz:                      100%\nCPU max MHz:                             1500.0000\nCPU min MHz:                             600.0000\nBogoMIPS:                                108.00\nFlags:                                   fp asimd evtstrm crc32 cpuid\nL1d cache:                               128 KiB (4 instances)\nL1i cache:                               192 KiB (4 instances)\nL2 cache:                                1 MiB (1 instance)\nNUMA node(s):                            2\nNUMA node0 CPU(s):                       0-3\nNUMA node1 CPU(s):                       0-3\nVulnerability Gather data sampling:      Not affected\nVulnerability Ghostwrite:                Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Old microcode:             Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Not affected\nVulnerability Spec rstack overflow:      Not affected\nVulnerability Spec store bypass:         Vulnerable\nVulnerability Spectre v1:                Mitigation; __user pointer sanitization\nVulnerability Spectre v2:                Vulnerable\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Not affected",
+        "error": null
+      },
+      "compiler": {
+        "value": "c++ (Debian 14.2.0-19) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+        "error": null
+      },
+      "cmake": {
+        "value": "cmake version 3.31.6\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).",
+        "error": null
+      },
+      "git_commit": {
+        "value": "3ea425acff17eda35cd60577bf37ff7d0ccc103c",
+        "error": null
+      },
+      "git_status": {
+        "value": "",
+        "error": null
+      },
+      "chrony_tracking": {
+        "value": "Reference ID    : C0A83201 (192.168.50.1)\nStratum         : 4\nRef time (UTC)  : Wed Aug 19 01:45:59 2026\nSystem time     : 0.000000395 seconds fast of NTP time\nLast offset     : +0.000000534 seconds\nRMS offset      : 0.000001814 seconds\nFrequency       : 2.860 ppm slow\nResidual freq   : +0.003 ppm\nSkew            : 0.256 ppm\nRoot delay      : 0.055549651 seconds\nRoot dispersion : 0.001143692 seconds\nUpdate interval : 4.0 seconds\nLeap status     : Normal",
+        "error": null
+      },
+      "chrony_sources": {
+        "value": ".-- Source mode  '^' = server, '=' = peer, '#' = local clock.\n / .- Source state '*' = current best, '+' = combined, '-' = not combined,\n| /             'x' = may be in error, '~' = too variable, '?' = unusable.\n||                                                 .- xxxx [ yyyy ] +/- zzzz\n||      Reachability register (octal) -.           |  xxxx = adjusted offset,\n||      Log2(Polling interval) --.      |          |  yyyy = measured offset,\n||                                \\     |          |  zzzz = estimated error.\n||                                 |    |           \\\nMS Name/IP address         Stratum Poll Reach LastRx Last sample               \n===============================================================================\n^* 192.168.50.1                  3   2   377     0  +5772ns[+6306ns] +/-   29ms",
+        "error": null
+      },
+      "governor": {
+        "value": "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor=performance\n/sys/devices/system/cpu/cpu1/cpufreq/scaling_governor=performance\n/sys/devices/system/cpu/cpu2/cpufreq/scaling_governor=performance\n/sys/devices/system/cpu/cpu3/cpufreq/scaling_governor=performance",
+        "error": null
+      },
+      "clock_state": {
+        "value": "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq=1500000\n/sys/devices/system/cpu/cpu1/cpufreq/scaling_cur_freq=1500000\n/sys/devices/system/cpu/cpu2/cpufreq/scaling_cur_freq=1500000\n/sys/devices/system/cpu/cpu3/cpufreq/scaling_cur_freq=1500000",
+        "error": null
+      },
+      "thermal": {
+        "value": "temp=41.3'C",
+        "error": null
+      },
+      "throttled": {
+        "value": "throttled=0x0",
+        "error": null
+      },
+      "socket_maxima": {
+        "value": "net.core.rmem_max = 4194304\nnet.core.wmem_max = 4194304",
+        "error": null
+      },
+      "interface": {
+        "value": "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP mode DEFAULT group default qlen 1000\n    link/ether e4:5f:01:25:cb:61 brd ff:ff:ff:ff:ff:ff promiscuity 0 allmulti 0 minmtu 68 maxmtu 1500 addrgenmode eui64 numtxqueues 5 numrxqueues 5 gso_max_size 65536 gso_max_segs 65535 tso_max_size 65536 tso_max_segs 65535 gro_max_size 65536 gso_ipv4_max_size 65536 gro_ipv4_max_size 65536 parentbus platform parentdev fd580000.ethernet",
+        "error": null
+      },
+      "driver": {
+        "value": "driver: bcmgenet\nversion: 6.18.39+rpt-rpi-v8\nfirmware-version: \nexpansion-rom-version: \nbus-info: fd580000.ethernet\nsupports-statistics: yes\nsupports-test: no\nsupports-eeprom-access: no\nsupports-register-dump: no\nsupports-priv-flags: no",
+        "error": null
+      },
+      "link": {
+        "value": "Settings for eth0:\n\tSupported ports: [ TP\t MII ]\n\tSupported link modes:   10baseT/Half 10baseT/Full\n\t                        100baseT/Half 100baseT/Full\n\t                        1000baseT/Half 1000baseT/Full\n\tSupported pause frame use: Symmetric Receive-only\n\tSupports auto-negotiation: Yes\n\tSupported FEC modes: Not reported\n\tAdvertised link modes:  10baseT/Half 10baseT/Full\n\t                        100baseT/Half 100baseT/Full\n\t                        1000baseT/Half 1000baseT/Full\n\tAdvertised pause frame use: No\n\tAdvertised auto-negotiation: Yes\n\tAdvertised FEC modes: Not reported\n\tLink partner advertised link modes:  10baseT/Half 10baseT/Full\n\t                                     100baseT/Half 100baseT/Full\n\t                                     1000baseT/Half 1000baseT/Full\n\tLink partner advertised pause frame use: No\n\tLink partner advertised auto-negotiation: Yes\n\tLink partner advertised FEC modes: Not reported\n\tSpeed: 1000Mb/s\n\tDuplex: Full\n\tAuto-negotiation: on\n\tmaster-slave cfg: preferred slave\n\tmaster-slave status: slave\n\tPort: Twisted Pair\n\tPHYAD: 1\n\tTransceiver: external\n\tMDI-X: Unknown\n\tSupports Wake-on: d\n\tWake-on: d\n        Current message level: 0x00000007 (7)\n                               drv probe link\n\tLink detected: yes",
+        "error": null
+      },
+      "offloads": {
+        "value": "Features for eth0:\nrx-checksumming: on\ntx-checksumming: on\n\ttx-checksum-ipv4: off [fixed]\n\ttx-checksum-ip-generic: on\n\ttx-checksum-ipv6: off [fixed]\n\ttx-checksum-fcoe-crc: off [fixed]\n\ttx-checksum-sctp: off [fixed]\nscatter-gather: on\n\ttx-scatter-gather: on\n\ttx-scatter-gather-fraglist: off [fixed]\ntcp-segmentation-offload: off\n\ttx-tcp-segmentation: off [fixed]\n\ttx-tcp-ecn-segmentation: off [fixed]\n\ttx-tcp-mangleid-segmentation: off [fixed]\n\ttx-tcp6-segmentation: off [fixed]\n\ttx-tcp-accecn-segmentation: off [fixed]\ngeneric-segmentation-offload: on\ngeneric-receive-offload: on\nlarge-receive-offload: off [fixed]\nrx-vlan-offload: off [fixed]\ntx-vlan-offload: off [fixed]\nntuple-filters: off [fixed]\nreceive-hashing: off [fixed]\nhighdma: on\nrx-vlan-filter: off [fixed]\nvlan-challenged: off [fixed]\ntx-gso-robust: off [fixed]\ntx-fcoe-segmentation: off [fixed]\ntx-gre-segmentation: off [fixed]\ntx-gre-csum-segmentation: off [fixed]\ntx-ipxip4-segmentation: off [fixed]\ntx-ipxip6-segmentation: off [fixed]\ntx-udp_tnl-segmentation: off [fixed]\ntx-udp_tnl-csum-segmentation: off [fixed]\ntx-gso-partial: off [fixed]\ntx-tunnel-remcsum-segmentation: off [fixed]\ntx-sctp-segmentation: off [fixed]\ntx-esp-segmentation: off [fixed]\ntx-udp-segmentation: off [fixed]\ntx-gso-list: off [fixed]\ntx-nocache-copy: off\nloopback: off [fixed]\nrx-fcs: off [fixed]\nrx-all: off [fixed]\ntx-vlan-stag-hw-insert: off [fixed]\nrx-vlan-stag-hw-parse: off [fixed]\nrx-vlan-stag-filter: off [fixed]\nl2-fwd-offload: off [fixed]\nhw-tc-offload: off [fixed]\nesp-hw-offload: off [fixed]\nesp-tx-csum-hw-offload: off [fixed]\nrx-udp_tunnel-port-offload: off [fixed]\ntls-hw-tx-offload: off [fixed]\ntls-hw-rx-offload: off [fixed]\nrx-gro-hw: off [fixed]\ntls-hw-record: off [fixed]\nrx-gro-list: off\nmacsec-hw-offload: off [fixed]\nrx-udp-gro-forwarding: off\nhsr-tag-ins-offload: off [fixed]\nhsr-tag-rm-offload: off [fixed]\nhsr-fwd-offload: off [fixed]\nhsr-dup-offload: off [fixed]",
+        "error": null
+      },
+      "irq_lines": {
+        "value": "27:     687656          0          0          0    GICv2 189 Level     eth0\n 28:   68592629          0          0          0    GICv2 190 Level     eth0",
+        "error": null
+      },
+      "irq_affinity": {
+        "value": "/proc/irq/1/smp_affinity_list=0-3\n/proc/irq/10/smp_affinity_list=0-3\n/proc/irq/11/smp_affinity_list=0-3\n/proc/irq/12/smp_affinity_list=0-3\n/proc/irq/13/smp_affinity_list=0-3\n/proc/irq/14/smp_affinity_list=0-3\n/proc/irq/15/smp_affinity_list=0-3\n/proc/irq/2/smp_affinity_list=0-3\n/proc/irq/26/smp_affinity_list=0-3\n/proc/irq/27/smp_affinity_list=0\n/proc/irq/28/smp_affinity_list=0\n/proc/irq/29/smp_affinity_list=0-3\n/proc/irq/3/smp_affinity_list=0-3\n/proc/irq/33/smp_affinity_list=0-3\n/proc/irq/34/smp_affinity_list=0\n/proc/irq/35/smp_affinity_list=1\n/proc/irq/36/smp_affinity_list=2\n/proc/irq/37/smp_affinity_list=3\n/proc/irq/38/smp_affinity_list=0-3\n/proc/irq/39/smp_affinity_list=0-3\n/proc/irq/4/smp_affinity_list=0-3\n/proc/irq/5/smp_affinity_list=0-3\n/proc/irq/6/smp_affinity_list=0-3\n/proc/irq/7/smp_affinity_list=0-3\n/proc/irq/8/smp_affinity_list=0-3\n/proc/irq/9/smp_affinity_list=0-3",
+        "error": null
+      },
+      "git_dirty": {
+        "value": false,
+        "error": null
+      }
+    },
+    "sender": {
+      "hostname": {
+        "value": "nll-sender",
+        "error": null
+      },
+      "kernel": {
+        "value": "Linux nll-sender 6.18.39+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.39-1+rpt1 (2026-07-29) aarch64 GNU/Linux",
+        "error": null
+      },
+      "cpu": {
+        "value": "Architecture:                            aarch64\nCPU op-mode(s):                          32-bit, 64-bit\nByte Order:                              Little Endian\nCPU(s):                                  4\nOn-line CPU(s) list:                     0-3\nVendor ID:                               ARM\nModel name:                              Cortex-A72\nModel:                                   3\nThread(s) per core:                      1\nCore(s) per cluster:                     4\nSocket(s):                               -\nCluster(s):                              1\nStepping:                                r0p3\nFrequency boost:                         disabled\nCPU(s) scaling MHz:                      100%\nCPU max MHz:                             1500.0000\nCPU min MHz:                             600.0000\nBogoMIPS:                                108.00\nFlags:                                   fp asimd evtstrm crc32 cpuid\nL1d cache:                               128 KiB (4 instances)\nL1i cache:                               192 KiB (4 instances)\nL2 cache:                                1 MiB (1 instance)\nNUMA node(s):                            2\nNUMA node0 CPU(s):                       0-3\nNUMA node1 CPU(s):                       0-3\nVulnerability Gather data sampling:      Not affected\nVulnerability Ghostwrite:                Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Old microcode:             Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Not affected\nVulnerability Spec rstack overflow:      Not affected\nVulnerability Spec store bypass:         Vulnerable\nVulnerability Spectre v1:                Mitigation; __user pointer sanitization\nVulnerability Spectre v2:                Vulnerable\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Not affected",
+        "error": null
+      },
+      "compiler": {
+        "value": "c++ (Debian 14.2.0-19) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+        "error": null
+      },
+      "cmake": {
+        "value": "cmake version 3.31.6\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).",
+        "error": null
+      },
+      "git_commit": {
+        "value": "3ea425acff17eda35cd60577bf37ff7d0ccc103c",
+        "error": null
+      },
+      "git_status": {
+        "value": "",
+        "error": null
+      },
+      "chrony_tracking": {
+        "value": "Reference ID    : D8E6E927 (vps6.drown.org)\nStratum         : 3\nRef time (UTC)  : Wed Aug 19 01:42:41 2026\nSystem time     : 0.000079456 seconds fast of NTP time\nLast offset     : -0.000080169 seconds\nRMS offset      : 0.000229423 seconds\nFrequency       : 5.290 ppm fast\nResidual freq   : -0.000 ppm\nSkew            : 0.043 ppm\nRoot delay      : 0.055444140 seconds\nRoot dispersion : 0.001178159 seconds\nUpdate interval : 1031.5 seconds\nLeap status     : Normal",
+        "error": null
+      },
+      "chrony_sources": {
+        "value": ".-- Source mode  '^' = server, '=' = peer, '#' = local clock.\n / .- Source state '*' = current best, '+' = combined, '-' = not combined,\n| /             'x' = may be in error, '~' = too variable, '?' = unusable.\n||                                                 .- xxxx [ yyyy ] +/- zzzz\n||      Reachability register (octal) -.           |  xxxx = adjusted offset,\n||      Log2(Polling interval) --.      |          |  yyyy = measured offset,\n||                                \\     |          |  zzzz = estimated error.\n||                                 |    |           \\\nMS Name/IP address         Stratum Poll Reach LastRx Last sample               \n===============================================================================\n^* vps6.drown.org                2  10   377   199  -3589us[-3669us] +/-   30ms\n^+ 149.248.12.167.vultruser>     3  10   377   418   +519us[ +439us] +/-   53ms\n^+ time-dfw.far.net              2  10   377   23m  -9050us[-9190us] +/-   58ms\n^- 172-233-157-223.ip.linod>     2  10   377   320  -6459us[-6539us] +/-  128ms",
+        "error": null
+      },
+      "governor": {
+        "value": "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor=performance\n/sys/devices/system/cpu/cpu1/cpufreq/scaling_governor=performance\n/sys/devices/system/cpu/cpu2/cpufreq/scaling_governor=performance\n/sys/devices/system/cpu/cpu3/cpufreq/scaling_governor=performance",
+        "error": null
+      },
+      "clock_state": {
+        "value": "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq=1500000\n/sys/devices/system/cpu/cpu1/cpufreq/scaling_cur_freq=1500000\n/sys/devices/system/cpu/cpu2/cpufreq/scaling_cur_freq=1500000\n/sys/devices/system/cpu/cpu3/cpufreq/scaling_cur_freq=1500000",
+        "error": null
+      },
+      "thermal": {
+        "value": "temp=38.9'C",
+        "error": null
+      },
+      "throttled": {
+        "value": "throttled=0x0",
+        "error": null
+      },
+      "socket_maxima": {
+        "value": "net.core.rmem_max = 4194304\nnet.core.wmem_max = 4194304",
+        "error": null
+      },
+      "interface": {
+        "value": "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP mode DEFAULT group default qlen 1000\n    link/ether e4:5f:01:65:8e:53 brd ff:ff:ff:ff:ff:ff promiscuity 0 allmulti 0 minmtu 68 maxmtu 1500 addrgenmode eui64 numtxqueues 5 numrxqueues 5 gso_max_size 65536 gso_max_segs 65535 tso_max_size 65536 tso_max_segs 65535 gro_max_size 65536 gso_ipv4_max_size 65536 gro_ipv4_max_size 65536 parentbus platform parentdev fd580000.ethernet",
+        "error": null
+      },
+      "driver": {
+        "value": "driver: bcmgenet\nversion: 6.18.39+rpt-rpi-v8\nfirmware-version: \nexpansion-rom-version: \nbus-info: fd580000.ethernet\nsupports-statistics: yes\nsupports-test: no\nsupports-eeprom-access: no\nsupports-register-dump: no\nsupports-priv-flags: no",
+        "error": null
+      },
+      "link": {
+        "value": "Settings for eth0:\n\tSupported ports: [ TP\t MII ]\n\tSupported link modes:   10baseT/Half 10baseT/Full\n\t                        100baseT/Half 100baseT/Full\n\t                        1000baseT/Half 1000baseT/Full\n\tSupported pause frame use: Symmetric Receive-only\n\tSupports auto-negotiation: Yes\n\tSupported FEC modes: Not reported\n\tAdvertised link modes:  10baseT/Half 10baseT/Full\n\t                        100baseT/Half 100baseT/Full\n\t                        1000baseT/Half 1000baseT/Full\n\tAdvertised pause frame use: No\n\tAdvertised auto-negotiation: Yes\n\tAdvertised FEC modes: Not reported\n\tLink partner advertised link modes:  10baseT/Half 10baseT/Full\n\t                                     100baseT/Half 100baseT/Full\n\t                                     1000baseT/Half 1000baseT/Full\n\tLink partner advertised pause frame use: No\n\tLink partner advertised auto-negotiation: Yes\n\tLink partner advertised FEC modes: Not reported\n\tSpeed: 1000Mb/s\n\tDuplex: Full\n\tAuto-negotiation: on\n\tmaster-slave cfg: preferred slave\n\tmaster-slave status: master\n\tPort: Twisted Pair\n\tPHYAD: 1\n\tTransceiver: external\n\tMDI-X: Unknown\n\tSupports Wake-on: d\n\tWake-on: d\n        Current message level: 0x00000007 (7)\n                               drv probe link\n\tLink detected: yes",
+        "error": null
+      },
+      "offloads": {
+        "value": "Features for eth0:\nrx-checksumming: on\ntx-checksumming: on\n\ttx-checksum-ipv4: off [fixed]\n\ttx-checksum-ip-generic: on\n\ttx-checksum-ipv6: off [fixed]\n\ttx-checksum-fcoe-crc: off [fixed]\n\ttx-checksum-sctp: off [fixed]\nscatter-gather: on\n\ttx-scatter-gather: on\n\ttx-scatter-gather-fraglist: off [fixed]\ntcp-segmentation-offload: off\n\ttx-tcp-segmentation: off [fixed]\n\ttx-tcp-ecn-segmentation: off [fixed]\n\ttx-tcp-mangleid-segmentation: off [fixed]\n\ttx-tcp6-segmentation: off [fixed]\n\ttx-tcp-accecn-segmentation: off [fixed]\ngeneric-segmentation-offload: on\ngeneric-receive-offload: on\nlarge-receive-offload: off [fixed]\nrx-vlan-offload: off [fixed]\ntx-vlan-offload: off [fixed]\nntuple-filters: off [fixed]\nreceive-hashing: off [fixed]\nhighdma: on\nrx-vlan-filter: off [fixed]\nvlan-challenged: off [fixed]\ntx-gso-robust: off [fixed]\ntx-fcoe-segmentation: off [fixed]\ntx-gre-segmentation: off [fixed]\ntx-gre-csum-segmentation: off [fixed]\ntx-ipxip4-segmentation: off [fixed]\ntx-ipxip6-segmentation: off [fixed]\ntx-udp_tnl-segmentation: off [fixed]\ntx-udp_tnl-csum-segmentation: off [fixed]\ntx-gso-partial: off [fixed]\ntx-tunnel-remcsum-segmentation: off [fixed]\ntx-sctp-segmentation: off [fixed]\ntx-esp-segmentation: off [fixed]\ntx-udp-segmentation: off [fixed]\ntx-gso-list: off [fixed]\ntx-nocache-copy: off\nloopback: off [fixed]\nrx-fcs: off [fixed]\nrx-all: off [fixed]\ntx-vlan-stag-hw-insert: off [fixed]\nrx-vlan-stag-hw-parse: off [fixed]\nrx-vlan-stag-filter: off [fixed]\nl2-fwd-offload: off [fixed]\nhw-tc-offload: off [fixed]\nesp-hw-offload: off [fixed]\nesp-tx-csum-hw-offload: off [fixed]\nrx-udp_tunnel-port-offload: off [fixed]\ntls-hw-tx-offload: off [fixed]\ntls-hw-rx-offload: off [fixed]\nrx-gro-hw: off [fixed]\ntls-hw-record: off [fixed]\nrx-gro-list: off\nmacsec-hw-offload: off [fixed]\nrx-udp-gro-forwarding: off\nhsr-tag-ins-offload: off [fixed]\nhsr-tag-rm-offload: off [fixed]\nhsr-fwd-offload: off [fixed]\nhsr-dup-offload: off [fixed]",
+        "error": null
+      },
+      "irq_lines": {
+        "value": "27:     715672          0          0          0    GICv2 189 Level     eth0\n 28: 1800274977          0          0          0    GICv2 190 Level     eth0",
+        "error": null
+      },
+      "irq_affinity": {
+        "value": "/proc/irq/1/smp_affinity_list=0-3\n/proc/irq/10/smp_affinity_list=0-3\n/proc/irq/11/smp_affinity_list=0-3\n/proc/irq/12/smp_affinity_list=0-3\n/proc/irq/13/smp_affinity_list=0-3\n/proc/irq/14/smp_affinity_list=0-3\n/proc/irq/15/smp_affinity_list=0-3\n/proc/irq/2/smp_affinity_list=0-3\n/proc/irq/26/smp_affinity_list=0-3\n/proc/irq/27/smp_affinity_list=0\n/proc/irq/28/smp_affinity_list=0\n/proc/irq/29/smp_affinity_list=0-3\n/proc/irq/3/smp_affinity_list=0-3\n/proc/irq/33/smp_affinity_list=0-3\n/proc/irq/34/smp_affinity_list=0\n/proc/irq/35/smp_affinity_list=1\n/proc/irq/36/smp_affinity_list=2\n/proc/irq/37/smp_affinity_list=3\n/proc/irq/38/smp_affinity_list=0-3\n/proc/irq/39/smp_affinity_list=0-3\n/proc/irq/4/smp_affinity_list=0-3\n/proc/irq/5/smp_affinity_list=0-3\n/proc/irq/6/smp_affinity_list=0-3\n/proc/irq/7/smp_affinity_list=0-3\n/proc/irq/8/smp_affinity_list=0-3\n/proc/irq/9/smp_affinity_list=0-3",
+        "error": null
+      },
+      "git_dirty": {
+        "value": false,
+        "error": null
+      }
+    },
+    "orchestrator": {
+      "hostname": {
+        "value": "EmreDesktop",
+        "error": null
+      },
+      "kernel": {
+        "value": "Linux EmreDesktop 6.6.87.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun  5 18:30:46 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux",
+        "error": null
+      },
+      "cpu": {
+        "value": "Architecture:                         x86_64\nCPU op-mode(s):                       32-bit, 64-bit\nAddress sizes:                        39 bits physical, 48 bits virtual\nByte Order:                           Little Endian\nCPU(s):                               24\nOn-line CPU(s) list:                  0-23\nVendor ID:                            GenuineIntel\nModel name:                           13th Gen Intel(R) Core(TM) i9-13900KF\nCPU family:                           6\nModel:                                183\nThread(s) per core:                   2\nCore(s) per socket:                   12\nSocket(s):                            1\nStepping:                             1\nBogoMIPS:                             5990.40\nFlags:                                fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology tsc_reliable nonstop_tsc cpuid tsc_known_freq pni pclmulqdq vmx ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch ssbd ibrs ibpb stibp ibrs_enhanced tpr_shadow ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves avx_vnni vnmi umip waitpkg gfni vaes vpclmulqdq rdpid movdiri movdir64b fsrm md_clear serialize flush_l1d arch_capabilities\nVirtualization:                       VT-x\nHypervisor vendor:                    Microsoft\nVirtualization type:                  full\nL1d cache:                            576 KiB (12 instances)\nL1i cache:                            384 KiB (12 instances)\nL2 cache:                             24 MiB (12 instances)\nL3 cache:                             36 MiB (1 instance)\nNUMA node(s):                         1\nNUMA node0 CPU(s):                    0-23\nVulnerability Gather data sampling:   Not affected\nVulnerability Itlb multihit:          Not affected\nVulnerability L1tf:                   Not affected\nVulnerability Mds:                    Not affected\nVulnerability Meltdown:               Not affected\nVulnerability Mmio stale data:        Not affected\nVulnerability Reg file data sampling: Vulnerable: No microcode\nVulnerability Retbleed:               Mitigation; Enhanced IBRS\nVulnerability Spec rstack overflow:   Not affected\nVulnerability Spec store bypass:      Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:             Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:             Mitigation; Enhanced / Automatic IBRS; IBPB conditional; RSB filling; PBRSB-eIBRS SW sequence; BHI BHI_DIS_S\nVulnerability Srbds:                  Not affected\nVulnerability Tsx async abort:        Not affected",
+        "error": null
+      },
+      "compiler": {
+        "value": "c++ (Ubuntu 14.2.0-4ubuntu2~24.04.1) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+        "error": null
+      },
+      "cmake": {
+        "value": "cmake version 4.2.1\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).",
+        "error": null
+      },
+      "git_commit": {
+        "value": "d9959938e0cddc53bfa8226965fb1eca3d41337c",
+        "error": null
+      },
+      "git_status": {
+        "value": "M CMakeLists.txt\n?? config_claim_5us.yaml\n?? src/bench/",
+        "error": null
+      },
+      "chrony_tracking": {
+        "value": "Reference ID    : E9485C92 (prod-ntp-4.ntp4.ps5.canonical.com)\nStratum         : 3\nRef time (UTC)  : Wed Aug 19 01:39:55 2026\nSystem time     : 0.130429715 seconds slow of NTP time\nLast offset     : -0.000054001 seconds\nRMS offset      : 0.000410096 seconds\nFrequency       : 4.214 ppm slow\nResidual freq   : -0.003 ppm\nSkew            : 0.089 ppm\nRoot delay      : 0.095200449 seconds\nRoot dispersion : 0.002234033 seconds\nUpdate interval : 519.2 seconds\nLeap status     : Normal",
+        "error": null
+      },
+      "chrony_sources": {
+        "value": ".-- Source mode  '^' = server, '=' = peer, '#' = local clock.\n / .- Source state '*' = current best, '+' = combined, '-' = not combined,\n| /             'x' = may be in error, '~' = too variable, '?' = unusable.\n||                                                 .- xxxx [ yyyy ] +/- zzzz\n||      Reachability register (octal) -.           |  xxxx = adjusted offset,\n||      Log2(Polling interval) --.      |          |  yyyy = measured offset,\n||                                \\     |          |  zzzz = estimated error.\n||                                 |    |           \\\nMS Name/IP address         Stratum Poll Reach LastRx Last sample               \n===============================================================================\n^+ prod-ntp-3.ntp4.ps5.cano>     2  10   377   578  -6912us[-6964us] +/-   59ms\n^+ prod-ntp-5.ntp1.ps5.cano>     2   9   377   285  -5500us[-5500us] +/-   56ms\n^+ prod-ntp-5.ntp1.ps5.cano>     2  10   277   647  -5098us[-5149us] +/-   56ms\n^* prod-ntp-4.ntp4.ps5.cano>     2   9   377   366  -3485us[-3539us] +/-   55ms\n^+ ntp.maxhost.io                2  10   377   30m  +1569us[+1417us] +/-   91ms\n^+ 170-187-147-56.ip.linode>     2  10   377   798    -11ms[  -11ms] +/-   91ms\n^+ time1.lshiy.com               2  10   377   271  -4277us[-4277us] +/-  137ms\n^+ time.sea.ordinaladvisors>     2   9   377    11  +4307us[+4307us] +/-   85ms",
+        "error": null
+      },
+      "governor": {
+        "value": null,
+        "error": "Command '['sh', '-c', 'for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do test -r \"$f\" && printf \\'%s=\\' \"$f\" && cat \"$f\"; done']' returned non-zero exit status 1."
+      },
+      "clock_state": {
+        "value": null,
+        "error": "Command '['sh', '-c', 'for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq; do test -r \"$f\" && printf \\'%s=\\' \"$f\" && cat \"$f\"; done']' returned non-zero exit status 1."
+      },
+      "thermal": {
+        "value": null,
+        "error": "Command '['sh', '-c', 'vcgencmd measure_temp 2>/dev/null || cat /sys/class/thermal/thermal_zone0/temp']' returned non-zero exit status 1."
+      },
+      "throttled": {
+        "value": "unavailable",
+        "error": null
+      },
+      "socket_maxima": {
+        "value": "net.core.rmem_max = 212992\nnet.core.wmem_max = 212992",
+        "error": null
+      },
+      "git_dirty": {
+        "value": true,
+        "error": null
+      }
+    }
+  },
+  "profile": {
+    "receiver": {
+      "hostname": {
+        "value": "nll-receiver",
+        "error": null
+      },
+      "kernel": {
+        "value": "Linux nll-receiver 6.18.39+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.39-1+rpt1 (2026-07-29) aarch64 GNU/Linux",
+        "error": null
+      },
+      "cpu": {
+        "value": "Architecture:                            aarch64\nCPU op-mode(s):                          32-bit, 64-bit\nByte Order:                              Little Endian\nCPU(s):                                  4\nOn-line CPU(s) list:                     0-3\nVendor ID:                               ARM\nModel name:                              Cortex-A72\nModel:                                   3\nThread(s) per core:                      1\nCore(s) per cluster:                     4\nSocket(s):                               -\nCluster(s):                              1\nStepping:                                r0p3\nFrequency boost:                         disabled\nCPU(s) scaling MHz:                      100%\nCPU max MHz:                             1500.0000\nCPU min MHz:                             600.0000\nBogoMIPS:                                108.00\nFlags:                                   fp asimd evtstrm crc32 cpuid\nL1d cache:                               128 KiB (4 instances)\nL1i cache:                               192 KiB (4 instances)\nL2 cache:                                1 MiB (1 instance)\nNUMA node(s):                            2\nNUMA node0 CPU(s):                       0-3\nNUMA node1 CPU(s):                       0-3\nVulnerability Gather data sampling:      Not affected\nVulnerability Ghostwrite:                Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Old microcode:             Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Not affected\nVulnerability Spec rstack overflow:      Not affected\nVulnerability Spec store bypass:         Vulnerable\nVulnerability Spectre v1:                Mitigation; __user pointer sanitization\nVulnerability Spectre v2:                Vulnerable\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Not affected",
+        "error": null
+      },
+      "compiler": {
+        "value": "c++ (Debian 14.2.0-19) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+        "error": null
+      },
+      "cmake": {
+        "value": "cmake version 3.31.6\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).",
+        "error": null
+      },
+      "git_commit": {
+        "value": "3ea425acff17eda35cd60577bf37ff7d0ccc103c",
+        "error": null
+      },
+      "git_status": {
+        "value": "",
+        "error": null
+      },
+      "chrony_tracking": {
+        "value": "Reference ID    : C0A83201 (192.168.50.1)\nStratum         : 4\nRef time (UTC)  : Wed Aug 19 02:30:19 2026\nSystem time     : 0.000000487 seconds slow of NTP time\nLast offset     : -0.000000679 seconds\nRMS offset      : 0.000001513 seconds\nFrequency       : 2.811 ppm slow\nResidual freq   : -0.002 ppm\nSkew            : 0.048 ppm\nRoot delay      : 0.055553652 seconds\nRoot dispersion : 0.001774736 seconds\nUpdate interval : 4.0 seconds\nLeap status     : Normal",
+        "error": null
+      },
+      "chrony_sources": {
+        "value": ".-- Source mode  '^' = server, '=' = peer, '#' = local clock.\n / .- Source state '*' = current best, '+' = combined, '-' = not combined,\n| /             'x' = may be in error, '~' = too variable, '?' = unusable.\n||                                                 .- xxxx [ yyyy ] +/- zzzz\n||      Reachability register (octal) -.           |  xxxx = adjusted offset,\n||      Log2(Polling interval) --.      |          |  yyyy = measured offset,\n||                                \\     |          |  zzzz = estimated error.\n||                                 |    |           \\\nMS Name/IP address         Stratum Poll Reach LastRx Last sample               \n===============================================================================\n^* 192.168.50.1                  3   2   377     1   -213ns[ -892ns] +/-   30ms",
+        "error": null
+      },
+      "governor": {
+        "value": "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor=performance\n/sys/devices/system/cpu/cpu1/cpufreq/scaling_governor=performance\n/sys/devices/system/cpu/cpu2/cpufreq/scaling_governor=performance\n/sys/devices/system/cpu/cpu3/cpufreq/scaling_governor=performance",
+        "error": null
+      },
+      "clock_state": {
+        "value": "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq=1500000\n/sys/devices/system/cpu/cpu1/cpufreq/scaling_cur_freq=1500000\n/sys/devices/system/cpu/cpu2/cpufreq/scaling_cur_freq=1500000\n/sys/devices/system/cpu/cpu3/cpufreq/scaling_cur_freq=1500000",
+        "error": null
+      },
+      "thermal": {
+        "value": "temp=41.8'C",
+        "error": null
+      },
+      "throttled": {
+        "value": "throttled=0x0",
+        "error": null
+      },
+      "socket_maxima": {
+        "value": "net.core.rmem_max = 4194304\nnet.core.wmem_max = 4194304",
+        "error": null
+      },
+      "interface": {
+        "value": "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP mode DEFAULT group default qlen 1000\n    link/ether e4:5f:01:25:cb:61 brd ff:ff:ff:ff:ff:ff promiscuity 0 allmulti 0 minmtu 68 maxmtu 1500 addrgenmode eui64 numtxqueues 5 numrxqueues 5 gso_max_size 65536 gso_max_segs 65535 tso_max_size 65536 tso_max_segs 65535 gro_max_size 65536 gso_ipv4_max_size 65536 gro_ipv4_max_size 65536 parentbus platform parentdev fd580000.ethernet",
+        "error": null
+      },
+      "driver": {
+        "value": "driver: bcmgenet\nversion: 6.18.39+rpt-rpi-v8\nfirmware-version: \nexpansion-rom-version: \nbus-info: fd580000.ethernet\nsupports-statistics: yes\nsupports-test: no\nsupports-eeprom-access: no\nsupports-register-dump: no\nsupports-priv-flags: no",
+        "error": null
+      },
+      "link": {
+        "value": "Settings for eth0:\n\tSupported ports: [ TP\t MII ]\n\tSupported link modes:   10baseT/Half 10baseT/Full\n\t                        100baseT/Half 100baseT/Full\n\t                        1000baseT/Half 1000baseT/Full\n\tSupported pause frame use: Symmetric Receive-only\n\tSupports auto-negotiation: Yes\n\tSupported FEC modes: Not reported\n\tAdvertised link modes:  10baseT/Half 10baseT/Full\n\t                        100baseT/Half 100baseT/Full\n\t                        1000baseT/Half 1000baseT/Full\n\tAdvertised pause frame use: No\n\tAdvertised auto-negotiation: Yes\n\tAdvertised FEC modes: Not reported\n\tLink partner advertised link modes:  10baseT/Half 10baseT/Full\n\t                                     100baseT/Half 100baseT/Full\n\t                                     1000baseT/Half 1000baseT/Full\n\tLink partner advertised pause frame use: No\n\tLink partner advertised auto-negotiation: Yes\n\tLink partner advertised FEC modes: Not reported\n\tSpeed: 1000Mb/s\n\tDuplex: Full\n\tAuto-negotiation: on\n\tmaster-slave cfg: preferred slave\n\tmaster-slave status: slave\n\tPort: Twisted Pair\n\tPHYAD: 1\n\tTransceiver: external\n\tMDI-X: Unknown\n\tSupports Wake-on: d\n\tWake-on: d\n        Current message level: 0x00000007 (7)\n                               drv probe link\n\tLink detected: yes",
+        "error": null
+      },
+      "offloads": {
+        "value": "Features for eth0:\nrx-checksumming: on\ntx-checksumming: on\n\ttx-checksum-ipv4: off [fixed]\n\ttx-checksum-ip-generic: on\n\ttx-checksum-ipv6: off [fixed]\n\ttx-checksum-fcoe-crc: off [fixed]\n\ttx-checksum-sctp: off [fixed]\nscatter-gather: on\n\ttx-scatter-gather: on\n\ttx-scatter-gather-fraglist: off [fixed]\ntcp-segmentation-offload: off\n\ttx-tcp-segmentation: off [fixed]\n\ttx-tcp-ecn-segmentation: off [fixed]\n\ttx-tcp-mangleid-segmentation: off [fixed]\n\ttx-tcp6-segmentation: off [fixed]\n\ttx-tcp-accecn-segmentation: off [fixed]\ngeneric-segmentation-offload: on\ngeneric-receive-offload: on\nlarge-receive-offload: off [fixed]\nrx-vlan-offload: off [fixed]\ntx-vlan-offload: off [fixed]\nntuple-filters: off [fixed]\nreceive-hashing: off [fixed]\nhighdma: on\nrx-vlan-filter: off [fixed]\nvlan-challenged: off [fixed]\ntx-gso-robust: off [fixed]\ntx-fcoe-segmentation: off [fixed]\ntx-gre-segmentation: off [fixed]\ntx-gre-csum-segmentation: off [fixed]\ntx-ipxip4-segmentation: off [fixed]\ntx-ipxip6-segmentation: off [fixed]\ntx-udp_tnl-segmentation: off [fixed]\ntx-udp_tnl-csum-segmentation: off [fixed]\ntx-gso-partial: off [fixed]\ntx-tunnel-remcsum-segmentation: off [fixed]\ntx-sctp-segmentation: off [fixed]\ntx-esp-segmentation: off [fixed]\ntx-udp-segmentation: off [fixed]\ntx-gso-list: off [fixed]\ntx-nocache-copy: off\nloopback: off [fixed]\nrx-fcs: off [fixed]\nrx-all: off [fixed]\ntx-vlan-stag-hw-insert: off [fixed]\nrx-vlan-stag-hw-parse: off [fixed]\nrx-vlan-stag-filter: off [fixed]\nl2-fwd-offload: off [fixed]\nhw-tc-offload: off [fixed]\nesp-hw-offload: off [fixed]\nesp-tx-csum-hw-offload: off [fixed]\nrx-udp_tunnel-port-offload: off [fixed]\ntls-hw-tx-offload: off [fixed]\ntls-hw-rx-offload: off [fixed]\nrx-gro-hw: off [fixed]\ntls-hw-record: off [fixed]\nrx-gro-list: off\nmacsec-hw-offload: off [fixed]\nrx-udp-gro-forwarding: off\nhsr-tag-ins-offload: off [fixed]\nhsr-tag-rm-offload: off [fixed]\nhsr-fwd-offload: off [fixed]\nhsr-dup-offload: off [fixed]",
+        "error": null
+      },
+      "irq_lines": {
+        "value": "27:     691584          0          0          0    GICv2 189 Level     eth0\n 28:   68594586          0          0          0    GICv2 190 Level     eth0",
+        "error": null
+      },
+      "irq_affinity": {
+        "value": "/proc/irq/1/smp_affinity_list=0-3\n/proc/irq/10/smp_affinity_list=0-3\n/proc/irq/11/smp_affinity_list=0-3\n/proc/irq/12/smp_affinity_list=0-3\n/proc/irq/13/smp_affinity_list=0-3\n/proc/irq/14/smp_affinity_list=0-3\n/proc/irq/15/smp_affinity_list=0-3\n/proc/irq/2/smp_affinity_list=0-3\n/proc/irq/26/smp_affinity_list=0-3\n/proc/irq/27/smp_affinity_list=0\n/proc/irq/28/smp_affinity_list=0\n/proc/irq/29/smp_affinity_list=0-3\n/proc/irq/3/smp_affinity_list=0-3\n/proc/irq/33/smp_affinity_list=0-3\n/proc/irq/34/smp_affinity_list=0\n/proc/irq/35/smp_affinity_list=1\n/proc/irq/36/smp_affinity_list=2\n/proc/irq/37/smp_affinity_list=3\n/proc/irq/38/smp_affinity_list=0-3\n/proc/irq/39/smp_affinity_list=0-3\n/proc/irq/4/smp_affinity_list=0-3\n/proc/irq/5/smp_affinity_list=0-3\n/proc/irq/6/smp_affinity_list=0-3\n/proc/irq/7/smp_affinity_list=0-3\n/proc/irq/8/smp_affinity_list=0-3\n/proc/irq/9/smp_affinity_list=0-3",
+        "error": null
+      },
+      "git_dirty": {
+        "value": false,
+        "error": null
+      }
+    },
+    "sender": {
+      "hostname": {
+        "value": "nll-sender",
+        "error": null
+      },
+      "kernel": {
+        "value": "Linux nll-sender 6.18.39+rpt-rpi-v8 #1 SMP PREEMPT Debian 1:6.18.39-1+rpt1 (2026-07-29) aarch64 GNU/Linux",
+        "error": null
+      },
+      "cpu": {
+        "value": "Architecture:                            aarch64\nCPU op-mode(s):                          32-bit, 64-bit\nByte Order:                              Little Endian\nCPU(s):                                  4\nOn-line CPU(s) list:                     0-3\nVendor ID:                               ARM\nModel name:                              Cortex-A72\nModel:                                   3\nThread(s) per core:                      1\nCore(s) per cluster:                     4\nSocket(s):                               -\nCluster(s):                              1\nStepping:                                r0p3\nFrequency boost:                         disabled\nCPU(s) scaling MHz:                      100%\nCPU max MHz:                             1500.0000\nCPU min MHz:                             600.0000\nBogoMIPS:                                108.00\nFlags:                                   fp asimd evtstrm crc32 cpuid\nL1d cache:                               128 KiB (4 instances)\nL1i cache:                               192 KiB (4 instances)\nL2 cache:                                1 MiB (1 instance)\nNUMA node(s):                            2\nNUMA node0 CPU(s):                       0-3\nNUMA node1 CPU(s):                       0-3\nVulnerability Gather data sampling:      Not affected\nVulnerability Ghostwrite:                Not affected\nVulnerability Indirect target selection: Not affected\nVulnerability Itlb multihit:             Not affected\nVulnerability L1tf:                      Not affected\nVulnerability Mds:                       Not affected\nVulnerability Meltdown:                  Not affected\nVulnerability Mmio stale data:           Not affected\nVulnerability Old microcode:             Not affected\nVulnerability Reg file data sampling:    Not affected\nVulnerability Retbleed:                  Not affected\nVulnerability Spec rstack overflow:      Not affected\nVulnerability Spec store bypass:         Vulnerable\nVulnerability Spectre v1:                Mitigation; __user pointer sanitization\nVulnerability Spectre v2:                Vulnerable\nVulnerability Srbds:                     Not affected\nVulnerability Tsa:                       Not affected\nVulnerability Tsx async abort:           Not affected\nVulnerability Vmscape:                   Not affected",
+        "error": null
+      },
+      "compiler": {
+        "value": "c++ (Debian 14.2.0-19) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+        "error": null
+      },
+      "cmake": {
+        "value": "cmake version 3.31.6\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).",
+        "error": null
+      },
+      "git_commit": {
+        "value": "3ea425acff17eda35cd60577bf37ff7d0ccc103c",
+        "error": null
+      },
+      "git_status": {
+        "value": "",
+        "error": null
+      },
+      "chrony_tracking": {
+        "value": "Reference ID    : D8E6E927 (vps6.drown.org)\nStratum         : 3\nRef time (UTC)  : Wed Aug 19 02:17:18 2026\nSystem time     : 0.000071088 seconds fast of NTP time\nLast offset     : +0.000056408 seconds\nRMS offset      : 0.000208102 seconds\nFrequency       : 5.287 ppm fast\nResidual freq   : -0.000 ppm\nSkew            : 0.039 ppm\nRoot delay      : 0.055444140 seconds\nRoot dispersion : 0.001843550 seconds\nUpdate interval : 1041.4 seconds\nLeap status     : Normal",
+        "error": null
+      },
+      "chrony_sources": {
+        "value": ".-- Source mode  '^' = server, '=' = peer, '#' = local clock.\n / .- Source state '*' = current best, '+' = combined, '-' = not combined,\n| /             'x' = may be in error, '~' = too variable, '?' = unusable.\n||                                                 .- xxxx [ yyyy ] +/- zzzz\n||      Reachability register (octal) -.           |  xxxx = adjusted offset,\n||      Log2(Polling interval) --.      |          |  yyyy = measured offset,\n||                                \\     |          |  zzzz = estimated error.\n||                                 |    |           \\\nMS Name/IP address         Stratum Poll Reach LastRx Last sample               \n===============================================================================\n^* vps6.drown.org                2  10   377   784  -5968us[-5911us] +/-   32ms\n^+ 149.248.12.167.vultruser>     3  10   377  1001  +2911us[+2967us] +/-   54ms\n^+ time-dfw.far.net              2  10   377   955  -4659us[-4602us] +/-   59ms\n^- 172-233-157-223.ip.linod>     2  10   377   908    -18ms[  -18ms] +/-  139ms",
+        "error": null
+      },
+      "governor": {
+        "value": "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor=performance\n/sys/devices/system/cpu/cpu1/cpufreq/scaling_governor=performance\n/sys/devices/system/cpu/cpu2/cpufreq/scaling_governor=performance\n/sys/devices/system/cpu/cpu3/cpufreq/scaling_governor=performance",
+        "error": null
+      },
+      "clock_state": {
+        "value": "/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq=1500000\n/sys/devices/system/cpu/cpu1/cpufreq/scaling_cur_freq=1500000\n/sys/devices/system/cpu/cpu2/cpufreq/scaling_cur_freq=1500000\n/sys/devices/system/cpu/cpu3/cpufreq/scaling_cur_freq=1500000",
+        "error": null
+      },
+      "thermal": {
+        "value": "temp=39.9'C",
+        "error": null
+      },
+      "throttled": {
+        "value": "throttled=0x0",
+        "error": null
+      },
+      "socket_maxima": {
+        "value": "net.core.rmem_max = 4194304\nnet.core.wmem_max = 4194304",
+        "error": null
+      },
+      "interface": {
+        "value": "2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc mq state UP mode DEFAULT group default qlen 1000\n    link/ether e4:5f:01:65:8e:53 brd ff:ff:ff:ff:ff:ff promiscuity 0 allmulti 0 minmtu 68 maxmtu 1500 addrgenmode eui64 numtxqueues 5 numrxqueues 5 gso_max_size 65536 gso_max_segs 65535 tso_max_size 65536 tso_max_segs 65535 gro_max_size 65536 gso_ipv4_max_size 65536 gro_ipv4_max_size 65536 parentbus platform parentdev fd580000.ethernet",
+        "error": null
+      },
+      "driver": {
+        "value": "driver: bcmgenet\nversion: 6.18.39+rpt-rpi-v8\nfirmware-version: \nexpansion-rom-version: \nbus-info: fd580000.ethernet\nsupports-statistics: yes\nsupports-test: no\nsupports-eeprom-access: no\nsupports-register-dump: no\nsupports-priv-flags: no",
+        "error": null
+      },
+      "link": {
+        "value": "Settings for eth0:\n\tSupported ports: [ TP\t MII ]\n\tSupported link modes:   10baseT/Half 10baseT/Full\n\t                        100baseT/Half 100baseT/Full\n\t                        1000baseT/Half 1000baseT/Full\n\tSupported pause frame use: Symmetric Receive-only\n\tSupports auto-negotiation: Yes\n\tSupported FEC modes: Not reported\n\tAdvertised link modes:  10baseT/Half 10baseT/Full\n\t                        100baseT/Half 100baseT/Full\n\t                        1000baseT/Half 1000baseT/Full\n\tAdvertised pause frame use: No\n\tAdvertised auto-negotiation: Yes\n\tAdvertised FEC modes: Not reported\n\tLink partner advertised link modes:  10baseT/Half 10baseT/Full\n\t                                     100baseT/Half 100baseT/Full\n\t                                     1000baseT/Half 1000baseT/Full\n\tLink partner advertised pause frame use: No\n\tLink partner advertised auto-negotiation: Yes\n\tLink partner advertised FEC modes: Not reported\n\tSpeed: 1000Mb/s\n\tDuplex: Full\n\tAuto-negotiation: on\n\tmaster-slave cfg: preferred slave\n\tmaster-slave status: master\n\tPort: Twisted Pair\n\tPHYAD: 1\n\tTransceiver: external\n\tMDI-X: Unknown\n\tSupports Wake-on: d\n\tWake-on: d\n        Current message level: 0x00000007 (7)\n                               drv probe link\n\tLink detected: yes",
+        "error": null
+      },
+      "offloads": {
+        "value": "Features for eth0:\nrx-checksumming: on\ntx-checksumming: on\n\ttx-checksum-ipv4: off [fixed]\n\ttx-checksum-ip-generic: on\n\ttx-checksum-ipv6: off [fixed]\n\ttx-checksum-fcoe-crc: off [fixed]\n\ttx-checksum-sctp: off [fixed]\nscatter-gather: on\n\ttx-scatter-gather: on\n\ttx-scatter-gather-fraglist: off [fixed]\ntcp-segmentation-offload: off\n\ttx-tcp-segmentation: off [fixed]\n\ttx-tcp-ecn-segmentation: off [fixed]\n\ttx-tcp-mangleid-segmentation: off [fixed]\n\ttx-tcp6-segmentation: off [fixed]\n\ttx-tcp-accecn-segmentation: off [fixed]\ngeneric-segmentation-offload: on\ngeneric-receive-offload: on\nlarge-receive-offload: off [fixed]\nrx-vlan-offload: off [fixed]\ntx-vlan-offload: off [fixed]\nntuple-filters: off [fixed]\nreceive-hashing: off [fixed]\nhighdma: on\nrx-vlan-filter: off [fixed]\nvlan-challenged: off [fixed]\ntx-gso-robust: off [fixed]\ntx-fcoe-segmentation: off [fixed]\ntx-gre-segmentation: off [fixed]\ntx-gre-csum-segmentation: off [fixed]\ntx-ipxip4-segmentation: off [fixed]\ntx-ipxip6-segmentation: off [fixed]\ntx-udp_tnl-segmentation: off [fixed]\ntx-udp_tnl-csum-segmentation: off [fixed]\ntx-gso-partial: off [fixed]\ntx-tunnel-remcsum-segmentation: off [fixed]\ntx-sctp-segmentation: off [fixed]\ntx-esp-segmentation: off [fixed]\ntx-udp-segmentation: off [fixed]\ntx-gso-list: off [fixed]\ntx-nocache-copy: off\nloopback: off [fixed]\nrx-fcs: off [fixed]\nrx-all: off [fixed]\ntx-vlan-stag-hw-insert: off [fixed]\nrx-vlan-stag-hw-parse: off [fixed]\nrx-vlan-stag-filter: off [fixed]\nl2-fwd-offload: off [fixed]\nhw-tc-offload: off [fixed]\nesp-hw-offload: off [fixed]\nesp-tx-csum-hw-offload: off [fixed]\nrx-udp_tunnel-port-offload: off [fixed]\ntls-hw-tx-offload: off [fixed]\ntls-hw-rx-offload: off [fixed]\nrx-gro-hw: off [fixed]\ntls-hw-record: off [fixed]\nrx-gro-list: off\nmacsec-hw-offload: off [fixed]\nrx-udp-gro-forwarding: off\nhsr-tag-ins-offload: off [fixed]\nhsr-tag-rm-offload: off [fixed]\nhsr-fwd-offload: off [fixed]\nhsr-dup-offload: off [fixed]",
+        "error": null
+      },
+      "irq_lines": {
+        "value": "27:     720868          0          0          0    GICv2 189 Level     eth0\n 28: 2001631128          0          0          0    GICv2 190 Level     eth0",
+        "error": null
+      },
+      "irq_affinity": {
+        "value": "/proc/irq/1/smp_affinity_list=0-3\n/proc/irq/10/smp_affinity_list=0-3\n/proc/irq/11/smp_affinity_list=0-3\n/proc/irq/12/smp_affinity_list=0-3\n/proc/irq/13/smp_affinity_list=0-3\n/proc/irq/14/smp_affinity_list=0-3\n/proc/irq/15/smp_affinity_list=0-3\n/proc/irq/2/smp_affinity_list=0-3\n/proc/irq/26/smp_affinity_list=0-3\n/proc/irq/27/smp_affinity_list=0\n/proc/irq/28/smp_affinity_list=0\n/proc/irq/29/smp_affinity_list=0-3\n/proc/irq/3/smp_affinity_list=0-3\n/proc/irq/33/smp_affinity_list=0-3\n/proc/irq/34/smp_affinity_list=0\n/proc/irq/35/smp_affinity_list=1\n/proc/irq/36/smp_affinity_list=2\n/proc/irq/37/smp_affinity_list=3\n/proc/irq/38/smp_affinity_list=0-3\n/proc/irq/39/smp_affinity_list=0-3\n/proc/irq/4/smp_affinity_list=0-3\n/proc/irq/5/smp_affinity_list=0-3\n/proc/irq/6/smp_affinity_list=0-3\n/proc/irq/7/smp_affinity_list=0-3\n/proc/irq/8/smp_affinity_list=0-3\n/proc/irq/9/smp_affinity_list=0-3",
+        "error": null
+      },
+      "git_dirty": {
+        "value": false,
+        "error": null
+      }
+    },
+    "orchestrator": {
+      "hostname": {
+        "value": "EmreDesktop",
+        "error": null
+      },
+      "kernel": {
+        "value": "Linux EmreDesktop 6.6.87.2-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Thu Jun  5 18:30:46 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux",
+        "error": null
+      },
+      "cpu": {
+        "value": "Architecture:                         x86_64\nCPU op-mode(s):                       32-bit, 64-bit\nAddress sizes:                        39 bits physical, 48 bits virtual\nByte Order:                           Little Endian\nCPU(s):                               24\nOn-line CPU(s) list:                  0-23\nVendor ID:                            GenuineIntel\nModel name:                           13th Gen Intel(R) Core(TM) i9-13900KF\nCPU family:                           6\nModel:                                183\nThread(s) per core:                   2\nCore(s) per socket:                   12\nSocket(s):                            1\nStepping:                             1\nBogoMIPS:                             5990.40\nFlags:                                fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology tsc_reliable nonstop_tsc cpuid tsc_known_freq pni pclmulqdq vmx ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch ssbd ibrs ibpb stibp ibrs_enhanced tpr_shadow ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt clwb sha_ni xsaveopt xsavec xgetbv1 xsaves avx_vnni vnmi umip waitpkg gfni vaes vpclmulqdq rdpid movdiri movdir64b fsrm md_clear serialize flush_l1d arch_capabilities\nVirtualization:                       VT-x\nHypervisor vendor:                    Microsoft\nVirtualization type:                  full\nL1d cache:                            576 KiB (12 instances)\nL1i cache:                            384 KiB (12 instances)\nL2 cache:                             24 MiB (12 instances)\nL3 cache:                             36 MiB (1 instance)\nNUMA node(s):                         1\nNUMA node0 CPU(s):                    0-23\nVulnerability Gather data sampling:   Not affected\nVulnerability Itlb multihit:          Not affected\nVulnerability L1tf:                   Not affected\nVulnerability Mds:                    Not affected\nVulnerability Meltdown:               Not affected\nVulnerability Mmio stale data:        Not affected\nVulnerability Reg file data sampling: Vulnerable: No microcode\nVulnerability Retbleed:               Mitigation; Enhanced IBRS\nVulnerability Spec rstack overflow:   Not affected\nVulnerability Spec store bypass:      Mitigation; Speculative Store Bypass disabled via prctl\nVulnerability Spectre v1:             Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:             Mitigation; Enhanced / Automatic IBRS; IBPB conditional; RSB filling; PBRSB-eIBRS SW sequence; BHI BHI_DIS_S\nVulnerability Srbds:                  Not affected\nVulnerability Tsx async abort:        Not affected",
+        "error": null
+      },
+      "compiler": {
+        "value": "c++ (Ubuntu 14.2.0-4ubuntu2~24.04.1) 14.2.0\nCopyright (C) 2024 Free Software Foundation, Inc.\nThis is free software; see the source for copying conditions.  There is NO\nwarranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.",
+        "error": null
+      },
+      "cmake": {
+        "value": "cmake version 4.2.1\n\nCMake suite maintained and supported by Kitware (kitware.com/cmake).",
+        "error": null
+      },
+      "git_commit": {
+        "value": "b4984084a11bf138126ae80540e3ed333391532b",
+        "error": null
+      },
+      "git_status": {
+        "value": "?? config_profile_5us.plan.json\n?? config_profile_5us.yaml",
+        "error": null
+      },
+      "chrony_tracking": {
+        "value": "Reference ID    : E9485C92 (prod-ntp-4.ntp1.ps5.canonical.com)\nStratum         : 3\nRef time (UTC)  : Wed Aug 19 02:05:37 2026\nSystem time     : 0.141598418 seconds slow of NTP time\nLast offset     : +0.000032296 seconds\nRMS offset      : 0.000369274 seconds\nFrequency       : 4.218 ppm slow\nResidual freq   : -0.000 ppm\nSkew            : 0.067 ppm\nRoot delay      : 0.095200449 seconds\nRoot dispersion : 0.003959328 seconds\nUpdate interval : 514.5 seconds\nLeap status     : Normal",
+        "error": null
+      },
+      "chrony_sources": {
+        "value": ".-- Source mode  '^' = server, '=' = peer, '#' = local clock.\n / .- Source state '*' = current best, '+' = combined, '-' = not combined,\n| /             'x' = may be in error, '~' = too variable, '?' = unusable.\n||                                                 .- xxxx [ yyyy ] +/- zzzz\n||      Reachability register (octal) -.           |  xxxx = adjusted offset,\n||      Log2(Polling interval) --.      |          |  yyyy = measured offset,\n||                                \\     |          |  zzzz = estimated error.\n||                                 |    |           \\\nMS Name/IP address         Stratum Poll Reach LastRx Last sample               \n===============================================================================\n^+ prod-ntp-3.ntp1.ps5.cano>     2  10   377   150  -4665us[-4665us] +/-   55ms\n^+ prod-ntp-5.ntp1.ps5.cano>     2   9   377   878  -9168us[-9168us] +/-   61ms\n^+ prod-ntp-5.ntp4.ps5.cano>     2  10   377   219  -6650us[-6650us] +/-   58ms\n^* prod-ntp-4.ntp4.ps5.cano>     2   9   377   24m  -5415us[-5383us] +/-   56ms\n^+ ntp.maxhost.io                2  10   377   334   -957us[ -957us] +/-   91ms\n^+ 170-187-147-56.ip.linode>     2  10   377   338  -9162us[-9162us] +/-   85ms\n^+ time1.lshiy.com               2  10   377   869   -839us[ -839us] +/-  132ms\n^+ time.sea.ordinaladvisors>     2  10   377  1125  +4466us[+4466us] +/-   91ms",
+        "error": null
+      },
+      "governor": {
+        "value": null,
+        "error": "Command '['sh', '-c', 'for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do test -r \"$f\" && printf \\'%s=\\' \"$f\" && cat \"$f\"; done']' returned non-zero exit status 1."
+      },
+      "clock_state": {
+        "value": null,
+        "error": "Command '['sh', '-c', 'for f in /sys/devices/system/cpu/cpu*/cpufreq/scaling_cur_freq; do test -r \"$f\" && printf \\'%s=\\' \"$f\" && cat \"$f\"; done']' returned non-zero exit status 1."
+      },
+      "thermal": {
+        "value": null,
+        "error": "Command '['sh', '-c', 'vcgencmd measure_temp 2>/dev/null || cat /sys/class/thermal/thermal_zone0/temp']' returned non-zero exit status 1."
+      },
+      "throttled": {
+        "value": "unavailable",
+        "error": null
+      },
+      "socket_maxima": {
+        "value": "net.core.rmem_max = 212992\nnet.core.wmem_max = 212992",
+        "error": null
+      },
+      "git_dirty": {
+        "value": true,
+        "error": null
+      }
+    }
+  },
+  "benchmark_commit": "3ea425acff17eda35cd60577bf37ff7d0ccc103c"
+}

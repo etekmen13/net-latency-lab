@@ -1,0 +1,1729 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 2K of event 'cycles:P'
+# Event count (approx.): 36749085397
+#
+# Children      Self  Command          Shared Object      Symbol                                                                                                                                     
+# ........  ........  ...............  .................  ...........................................................................................................................................
+#
+   100.00%     0.00%  receiver_batche  receiver_batched   [.] _start
+            |
+            ---_start
+               __libc_start_main
+               0x7f8a4e229c
+               main
+               |          
+               |--77.82%--nll::receiver::process_packet(nll::BinaryLogger&, nll::receiver::ProcessingStats&, nll::receiver::ReceivedPacket const&, unsigned long)
+               |          |          
+               |          |--66.05%--clock_gettime
+               |          |          |          
+               |          |           --60.71%--__kernel_clock_gettime
+               |          |          
+               |           --0.59%--clock_gettime@plt
+               |          
+                --20.89%--recvmmsg
+                          |          
+                           --20.82%--0x7f8a54269c
+                                     |          
+                                      --20.66%--0x7f8a54267c
+                                                |          
+                                                 --20.14%--el0t_64_sync
+                                                           el0t_64_sync_handler
+                                                           |          
+                                                            --20.06%--el0_svc
+                                                                      |          
+                                                                       --18.37%--do_el0_svc
+                                                                                 |          
+                                                                                  --18.29%--el0_svc_common.constprop.0
+                                                                                            |          
+                                                                                             --18.16%--invoke_syscall
+                                                                                                       |          
+                                                                                                        --18.09%--__arm64_sys_recvmmsg
+                                                                                                                  |          
+                                                                                                                   --17.77%--do_recvmmsg
+                                                                                                                             |          
+                                                                                                                              --16.40%--___sys_recvmsg
+                                                                                                                                        |          
+                                                                                                                                        |--13.21%--____sys_recvmsg
+                                                                                                                                        |          |          
+                                                                                                                                        |          |--6.44%--sock_recvmsg
+                                                                                                                                        |          |          |          
+                                                                                                                                        |          |           --6.32%--inet_recvmsg
+                                                                                                                                        |          |                     |          
+                                                                                                                                        |          |                      --6.19%--udp_recvmsg
+                                                                                                                                        |          |                                |          
+                                                                                                                                        |          |                                |--3.59%--__skb_recv_udp
+                                                                                                                                        |          |                                |          |          
+                                                                                                                                        |          |                                |           --2.51%--__skb_wait_for_more_packets
+                                                                                                                                        |          |                                |                     |          
+                                                                                                                                        |          |                                |                      --1.88%--schedule_timeout
+                                                                                                                                        |          |                                |                                |          
+                                                                                                                                        |          |                                |                                |--0.65%--schedule
+                                                                                                                                        |          |                                |                                |          |          
+                                                                                                                                        |          |                                |                                |           --0.58%--__schedule
+                                                                                                                                        |          |                                |                                |          
+                                                                                                                                        |          |                                |                                 --0.59%--add_timer
+                                                                                                                                        |          |                                |          
+                                                                                                                                        |          |                                 --1.01%--__arch_copy_to_user
+                                                                                                                                        |          |          
+                                                                                                                                        |           --6.03%--inet_recvmsg
+                                                                                                                                        |                     |          
+                                                                                                                                        |                      --5.84%--udp_recvmsg
+                                                                                                                                        |                                |          
+                                                                                                                                        |                                |--2.10%--__skb_recv_udp
+                                                                                                                                        |                                |          |          
+                                                                                                                                        |                                |          |--0.74%--_raw_spin_unlock_bh
+                                                                                                                                        |                                |          |          |          
+                                                                                                                                        |                                |          |           --0.70%--__local_bh_enable_ip
+                                                                                                                                        |                                |          |          
+                                                                                                                                        |                                |           --0.56%--udp_rmem_release
+                                                                                                                                        |                                |          
+                                                                                                                                        |                                |--1.51%--__arch_copy_to_user
+                                                                                                                                        |                                |          
+                                                                                                                                        |                                 --0.80%--skb_consume_udp
+                                                                                                                                        |                                           |          
+                                                                                                                                        |                                            --0.72%--skb_attempt_defer_free
+                                                                                                                                        |          
+                                                                                                                                         --1.95%--copy_msghdr_from_user
+                                                                                                                                                   |          
+                                                                                                                                                    --1.25%--import_iovec
+                                                                                                                                                              |          
+                                                                                                                                                               --0.64%--copy_iovec_from_user
+
+   100.00%     0.00%  receiver_batche  libc.so.6          [.] __libc_start_main
+            |
+            ---__libc_start_main
+               0x7f8a4e229c
+               main
+               |          
+               |--77.82%--nll::receiver::process_packet(nll::BinaryLogger&, nll::receiver::ProcessingStats&, nll::receiver::ReceivedPacket const&, unsigned long)
+               |          |          
+               |          |--66.05%--clock_gettime
+               |          |          |          
+               |          |           --60.71%--__kernel_clock_gettime
+               |          |          
+               |           --0.59%--clock_gettime@plt
+               |          
+                --20.89%--recvmmsg
+                          |          
+                           --20.82%--0x7f8a54269c
+                                     |          
+                                      --20.66%--0x7f8a54267c
+                                                |          
+                                                 --20.14%--el0t_64_sync
+                                                           el0t_64_sync_handler
+                                                           |          
+                                                            --20.06%--el0_svc
+                                                                      |          
+                                                                       --18.37%--do_el0_svc
+                                                                                 |          
+                                                                                  --18.29%--el0_svc_common.constprop.0
+                                                                                            |          
+                                                                                             --18.16%--invoke_syscall
+                                                                                                       |          
+                                                                                                        --18.09%--__arm64_sys_recvmmsg
+                                                                                                                  |          
+                                                                                                                   --17.77%--do_recvmmsg
+                                                                                                                             |          
+                                                                                                                              --16.40%--___sys_recvmsg
+                                                                                                                                        |          
+                                                                                                                                        |--13.21%--____sys_recvmsg
+                                                                                                                                        |          |          
+                                                                                                                                        |          |--6.44%--sock_recvmsg
+                                                                                                                                        |          |          |          
+                                                                                                                                        |          |           --6.32%--inet_recvmsg
+                                                                                                                                        |          |                     |          
+                                                                                                                                        |          |                      --6.19%--udp_recvmsg
+                                                                                                                                        |          |                                |          
+                                                                                                                                        |          |                                |--3.59%--__skb_recv_udp
+                                                                                                                                        |          |                                |          |          
+                                                                                                                                        |          |                                |           --2.51%--__skb_wait_for_more_packets
+                                                                                                                                        |          |                                |                     |          
+                                                                                                                                        |          |                                |                      --1.88%--schedule_timeout
+                                                                                                                                        |          |                                |                                |          
+                                                                                                                                        |          |                                |                                |--0.65%--schedule
+                                                                                                                                        |          |                                |                                |          |          
+                                                                                                                                        |          |                                |                                |           --0.58%--__schedule
+                                                                                                                                        |          |                                |                                |          
+                                                                                                                                        |          |                                |                                 --0.59%--add_timer
+                                                                                                                                        |          |                                |          
+                                                                                                                                        |          |                                 --1.01%--__arch_copy_to_user
+                                                                                                                                        |          |          
+                                                                                                                                        |           --6.03%--inet_recvmsg
+                                                                                                                                        |                     |          
+                                                                                                                                        |                      --5.84%--udp_recvmsg
+                                                                                                                                        |                                |          
+                                                                                                                                        |                                |--2.10%--__skb_recv_udp
+                                                                                                                                        |                                |          |          
+                                                                                                                                        |                                |          |--0.74%--_raw_spin_unlock_bh
+                                                                                                                                        |                                |          |          |          
+                                                                                                                                        |                                |          |           --0.70%--__local_bh_enable_ip
+                                                                                                                                        |                                |          |          
+                                                                                                                                        |                                |           --0.56%--udp_rmem_release
+                                                                                                                                        |                                |          
+                                                                                                                                        |                                |--1.51%--__arch_copy_to_user
+                                                                                                                                        |                                |          
+                                                                                                                                        |                                 --0.80%--skb_consume_udp
+                                                                                                                                        |                                           |          
+                                                                                                                                        |                                            --0.72%--skb_attempt_defer_free
+                                                                                                                                        |          
+                                                                                                                                         --1.95%--copy_msghdr_from_user
+                                                                                                                                                   |          
+                                                                                                                                                    --1.25%--import_iovec
+                                                                                                                                                              |          
+                                                                                                                                                               --0.64%--copy_iovec_from_user
+
+   100.00%     0.00%  receiver_batche  libc.so.6          [.] 0x0000007f8a4e229c
+            |
+            ---0x7f8a4e229c
+               main
+               |          
+               |--77.82%--nll::receiver::process_packet(nll::BinaryLogger&, nll::receiver::ProcessingStats&, nll::receiver::ReceivedPacket const&, unsigned long)
+               |          |          
+               |          |--66.05%--clock_gettime
+               |          |          |          
+               |          |           --60.71%--__kernel_clock_gettime
+               |          |          
+               |           --0.59%--clock_gettime@plt
+               |          
+                --20.89%--recvmmsg
+                          |          
+                           --20.82%--0x7f8a54269c
+                                     |          
+                                      --20.66%--0x7f8a54267c
+                                                |          
+                                                 --20.14%--el0t_64_sync
+                                                           el0t_64_sync_handler
+                                                           |          
+                                                            --20.06%--el0_svc
+                                                                      |          
+                                                                       --18.37%--do_el0_svc
+                                                                                 |          
+                                                                                  --18.29%--el0_svc_common.constprop.0
+                                                                                            |          
+                                                                                             --18.16%--invoke_syscall
+                                                                                                       |          
+                                                                                                        --18.09%--__arm64_sys_recvmmsg
+                                                                                                                  |          
+                                                                                                                   --17.77%--do_recvmmsg
+                                                                                                                             |          
+                                                                                                                              --16.40%--___sys_recvmsg
+                                                                                                                                        |          
+                                                                                                                                        |--13.21%--____sys_recvmsg
+                                                                                                                                        |          |          
+                                                                                                                                        |          |--6.44%--sock_recvmsg
+                                                                                                                                        |          |          |          
+                                                                                                                                        |          |           --6.32%--inet_recvmsg
+                                                                                                                                        |          |                     |          
+                                                                                                                                        |          |                      --6.19%--udp_recvmsg
+                                                                                                                                        |          |                                |          
+                                                                                                                                        |          |                                |--3.59%--__skb_recv_udp
+                                                                                                                                        |          |                                |          |          
+                                                                                                                                        |          |                                |           --2.51%--__skb_wait_for_more_packets
+                                                                                                                                        |          |                                |                     |          
+                                                                                                                                        |          |                                |                      --1.88%--schedule_timeout
+                                                                                                                                        |          |                                |                                |          
+                                                                                                                                        |          |                                |                                |--0.65%--schedule
+                                                                                                                                        |          |                                |                                |          |          
+                                                                                                                                        |          |                                |                                |           --0.58%--__schedule
+                                                                                                                                        |          |                                |                                |          
+                                                                                                                                        |          |                                |                                 --0.59%--add_timer
+                                                                                                                                        |          |                                |          
+                                                                                                                                        |          |                                 --1.01%--__arch_copy_to_user
+                                                                                                                                        |          |          
+                                                                                                                                        |           --6.03%--inet_recvmsg
+                                                                                                                                        |                     |          
+                                                                                                                                        |                      --5.84%--udp_recvmsg
+                                                                                                                                        |                                |          
+                                                                                                                                        |                                |--2.10%--__skb_recv_udp
+                                                                                                                                        |                                |          |          
+                                                                                                                                        |                                |          |--0.74%--_raw_spin_unlock_bh
+                                                                                                                                        |                                |          |          |          
+                                                                                                                                        |                                |          |           --0.70%--__local_bh_enable_ip
+                                                                                                                                        |                                |          |          
+                                                                                                                                        |                                |           --0.56%--udp_rmem_release
+                                                                                                                                        |                                |          
+                                                                                                                                        |                                |--1.51%--__arch_copy_to_user
+                                                                                                                                        |                                |          
+                                                                                                                                        |                                 --0.80%--skb_consume_udp
+                                                                                                                                        |                                           |          
+                                                                                                                                        |                                            --0.72%--skb_attempt_defer_free
+                                                                                                                                        |          
+                                                                                                                                         --1.95%--copy_msghdr_from_user
+                                                                                                                                                   |          
+                                                                                                                                                    --1.25%--import_iovec
+                                                                                                                                                              |          
+                                                                                                                                                               --0.64%--copy_iovec_from_user
+
+   100.00%     0.80%  receiver_batche  receiver_batched   [.] main
+            |          
+            |--99.20%--main
+            |          |          
+            |          |--77.82%--nll::receiver::process_packet(nll::BinaryLogger&, nll::receiver::ProcessingStats&, nll::receiver::ReceivedPacket const&, unsigned long)
+            |          |          |          
+            |          |          |--66.05%--clock_gettime
+            |          |          |          |          
+            |          |          |           --60.71%--__kernel_clock_gettime
+            |          |          |          
+            |          |           --0.59%--clock_gettime@plt
+            |          |          
+            |           --20.89%--recvmmsg
+            |                     |          
+            |                      --20.82%--0x7f8a54269c
+            |                                |          
+            |                                 --20.66%--0x7f8a54267c
+            |                                           |          
+            |                                            --20.14%--el0t_64_sync
+            |                                                      el0t_64_sync_handler
+            |                                                      |          
+            |                                                       --20.06%--el0_svc
+            |                                                                 |          
+            |                                                                  --18.37%--do_el0_svc
+            |                                                                            |          
+            |                                                                             --18.29%--el0_svc_common.constprop.0
+            |                                                                                       |          
+            |                                                                                        --18.16%--invoke_syscall
+            |                                                                                                  |          
+            |                                                                                                   --18.09%--__arm64_sys_recvmmsg
+            |                                                                                                             |          
+            |                                                                                                              --17.77%--do_recvmmsg
+            |                                                                                                                        |          
+            |                                                                                                                         --16.40%--___sys_recvmsg
+            |                                                                                                                                   |          
+            |                                                                                                                                   |--13.21%--____sys_recvmsg
+            |                                                                                                                                   |          |          
+            |                                                                                                                                   |          |--6.44%--sock_recvmsg
+            |                                                                                                                                   |          |          |          
+            |                                                                                                                                   |          |           --6.32%--inet_recvmsg
+            |                                                                                                                                   |          |                     |          
+            |                                                                                                                                   |          |                      --6.19%--udp_recvmsg
+            |                                                                                                                                   |          |                                |          
+            |                                                                                                                                   |          |                                |--3.59%--__skb_recv_udp
+            |                                                                                                                                   |          |                                |          |          
+            |                                                                                                                                   |          |                                |           --2.51%--__skb_wait_for_more_packets
+            |                                                                                                                                   |          |                                |                     |          
+            |                                                                                                                                   |          |                                |                      --1.88%--schedule_timeout
+            |                                                                                                                                   |          |                                |                                |          
+            |                                                                                                                                   |          |                                |                                |--0.65%--schedule
+            |                                                                                                                                   |          |                                |                                |          |          
+            |                                                                                                                                   |          |                                |                                |           --0.58%--__schedule
+            |                                                                                                                                   |          |                                |                                |          
+            |                                                                                                                                   |          |                                |                                 --0.59%--add_timer
+            |                                                                                                                                   |          |                                |          
+            |                                                                                                                                   |          |                                 --1.01%--__arch_copy_to_user
+            |                                                                                                                                   |          |          
+            |                                                                                                                                   |           --6.03%--inet_recvmsg
+            |                                                                                                                                   |                     |          
+            |                                                                                                                                   |                      --5.84%--udp_recvmsg
+            |                                                                                                                                   |                                |          
+            |                                                                                                                                   |                                |--2.10%--__skb_recv_udp
+            |                                                                                                                                   |                                |          |          
+            |                                                                                                                                   |                                |          |--0.74%--_raw_spin_unlock_bh
+            |                                                                                                                                   |                                |          |          |          
+            |                                                                                                                                   |                                |          |           --0.70%--__local_bh_enable_ip
+            |                                                                                                                                   |                                |          |          
+            |                                                                                                                                   |                                |           --0.56%--udp_rmem_release
+            |                                                                                                                                   |                                |          
+            |                                                                                                                                   |                                |--1.51%--__arch_copy_to_user
+            |                                                                                                                                   |                                |          
+            |                                                                                                                                   |                                 --0.80%--skb_consume_udp
+            |                                                                                                                                   |                                           |          
+            |                                                                                                                                   |                                            --0.72%--skb_attempt_defer_free
+            |                                                                                                                                   |          
+            |                                                                                                                                    --1.95%--copy_msghdr_from_user
+            |                                                                                                                                              |          
+            |                                                                                                                                               --1.25%--import_iovec
+            |                                                                                                                                                         |          
+            |                                                                                                                                                          --0.64%--copy_iovec_from_user
+            |          
+             --0.80%--_start
+                       __libc_start_main
+                       0x7f8a4e229c
+                       main
+
+    77.82%    11.18%  receiver_batche  receiver_batched   [.] nll::receiver::process_packet(nll::BinaryLogger&, nll::receiver::ProcessingStats&, nll::receiver::ReceivedPacket const&, unsigned long)
+            |          
+            |--66.64%--nll::receiver::process_packet(nll::BinaryLogger&, nll::receiver::ProcessingStats&, nll::receiver::ReceivedPacket const&, unsigned long)
+            |          |          
+            |          |--66.05%--clock_gettime
+            |          |          |          
+            |          |           --60.71%--__kernel_clock_gettime
+            |          |          
+            |           --0.59%--clock_gettime@plt
+            |          
+             --11.18%--_start
+                       __libc_start_main
+                       0x7f8a4e229c
+                       main
+                       nll::receiver::process_packet(nll::BinaryLogger&, nll::receiver::ProcessingStats&, nll::receiver::ReceivedPacket const&, unsigned long)
+
+    66.37%     5.46%  receiver_batche  libc.so.6          [.] clock_gettime
+            |          
+            |--60.91%--clock_gettime
+            |          __kernel_clock_gettime
+            |          
+             --5.46%--_start
+                       __libc_start_main
+                       0x7f8a4e229c
+                       main
+                       |          
+                        --5.34%--nll::receiver::process_packet(nll::BinaryLogger&, nll::receiver::ProcessingStats&, nll::receiver::ReceivedPacket const&, unsigned long)
+                                  clock_gettime
+
+    60.91%    60.91%  receiver_batche  [vdso]             [.] __kernel_clock_gettime
+            |
+            ---_start
+               __libc_start_main
+               0x7f8a4e229c
+               main
+               |          
+                --60.71%--nll::receiver::process_packet(nll::BinaryLogger&, nll::receiver::ProcessingStats&, nll::receiver::ReceivedPacket const&, unsigned long)
+                          clock_gettime
+                          __kernel_clock_gettime
+
+    20.89%     0.00%  receiver_batche  libc.so.6          [.] recvmmsg
+            |
+            ---recvmmsg
+               |          
+                --20.82%--0x7f8a54269c
+                          |          
+                           --20.66%--0x7f8a54267c
+                                     |          
+                                      --20.14%--el0t_64_sync
+                                                el0t_64_sync_handler
+                                                |          
+                                                 --20.06%--el0_svc
+                                                           |          
+                                                            --18.37%--do_el0_svc
+                                                                      |          
+                                                                       --18.29%--el0_svc_common.constprop.0
+                                                                                 |          
+                                                                                  --18.16%--invoke_syscall
+                                                                                            |          
+                                                                                             --18.09%--__arm64_sys_recvmmsg
+                                                                                                       |          
+                                                                                                        --17.77%--do_recvmmsg
+                                                                                                                  |          
+                                                                                                                   --16.40%--___sys_recvmsg
+                                                                                                                             |          
+                                                                                                                             |--13.21%--____sys_recvmsg
+                                                                                                                             |          |          
+                                                                                                                             |          |--6.44%--sock_recvmsg
+                                                                                                                             |          |          |          
+                                                                                                                             |          |           --6.32%--inet_recvmsg
+                                                                                                                             |          |                     |          
+                                                                                                                             |          |                      --6.19%--udp_recvmsg
+                                                                                                                             |          |                                |          
+                                                                                                                             |          |                                |--3.59%--__skb_recv_udp
+                                                                                                                             |          |                                |          |          
+                                                                                                                             |          |                                |           --2.51%--__skb_wait_for_more_packets
+                                                                                                                             |          |                                |                     |          
+                                                                                                                             |          |                                |                      --1.88%--schedule_timeout
+                                                                                                                             |          |                                |                                |          
+                                                                                                                             |          |                                |                                |--0.65%--schedule
+                                                                                                                             |          |                                |                                |          |          
+                                                                                                                             |          |                                |                                |           --0.58%--__schedule
+                                                                                                                             |          |                                |                                |          
+                                                                                                                             |          |                                |                                 --0.59%--add_timer
+                                                                                                                             |          |                                |          
+                                                                                                                             |          |                                 --1.01%--__arch_copy_to_user
+                                                                                                                             |          |          
+                                                                                                                             |           --6.03%--inet_recvmsg
+                                                                                                                             |                     |          
+                                                                                                                             |                      --5.84%--udp_recvmsg
+                                                                                                                             |                                |          
+                                                                                                                             |                                |--2.10%--__skb_recv_udp
+                                                                                                                             |                                |          |          
+                                                                                                                             |                                |          |--0.74%--_raw_spin_unlock_bh
+                                                                                                                             |                                |          |          |          
+                                                                                                                             |                                |          |           --0.70%--__local_bh_enable_ip
+                                                                                                                             |                                |          |          
+                                                                                                                             |                                |           --0.56%--udp_rmem_release
+                                                                                                                             |                                |          
+                                                                                                                             |                                |--1.51%--__arch_copy_to_user
+                                                                                                                             |                                |          
+                                                                                                                             |                                 --0.80%--skb_consume_udp
+                                                                                                                             |                                           |          
+                                                                                                                             |                                            --0.72%--skb_attempt_defer_free
+                                                                                                                             |          
+                                                                                                                              --1.95%--copy_msghdr_from_user
+                                                                                                                                        |          
+                                                                                                                                         --1.25%--import_iovec
+                                                                                                                                                   |          
+                                                                                                                                                    --0.64%--copy_iovec_from_user
+
+    20.82%     0.00%  receiver_batche  libc.so.6          [.] 0x0000007f8a54269c
+            |
+            ---0x7f8a54269c
+               |          
+                --20.66%--0x7f8a54267c
+                          |          
+                           --20.14%--el0t_64_sync
+                                     el0t_64_sync_handler
+                                     |          
+                                      --20.06%--el0_svc
+                                                |          
+                                                 --18.37%--do_el0_svc
+                                                           |          
+                                                            --18.29%--el0_svc_common.constprop.0
+                                                                      |          
+                                                                       --18.16%--invoke_syscall
+                                                                                 |          
+                                                                                  --18.09%--__arm64_sys_recvmmsg
+                                                                                            |          
+                                                                                             --17.77%--do_recvmmsg
+                                                                                                       |          
+                                                                                                        --16.40%--___sys_recvmsg
+                                                                                                                  |          
+                                                                                                                  |--13.21%--____sys_recvmsg
+                                                                                                                  |          |          
+                                                                                                                  |          |--6.44%--sock_recvmsg
+                                                                                                                  |          |          |          
+                                                                                                                  |          |           --6.32%--inet_recvmsg
+                                                                                                                  |          |                     |          
+                                                                                                                  |          |                      --6.19%--udp_recvmsg
+                                                                                                                  |          |                                |          
+                                                                                                                  |          |                                |--3.59%--__skb_recv_udp
+                                                                                                                  |          |                                |          |          
+                                                                                                                  |          |                                |           --2.51%--__skb_wait_for_more_packets
+                                                                                                                  |          |                                |                     |          
+                                                                                                                  |          |                                |                      --1.88%--schedule_timeout
+                                                                                                                  |          |                                |                                |          
+                                                                                                                  |          |                                |                                |--0.65%--schedule
+                                                                                                                  |          |                                |                                |          |          
+                                                                                                                  |          |                                |                                |           --0.58%--__schedule
+                                                                                                                  |          |                                |                                |          
+                                                                                                                  |          |                                |                                 --0.59%--add_timer
+                                                                                                                  |          |                                |          
+                                                                                                                  |          |                                 --1.01%--__arch_copy_to_user
+                                                                                                                  |          |          
+                                                                                                                  |           --6.03%--inet_recvmsg
+                                                                                                                  |                     |          
+                                                                                                                  |                      --5.84%--udp_recvmsg
+                                                                                                                  |                                |          
+                                                                                                                  |                                |--2.10%--__skb_recv_udp
+                                                                                                                  |                                |          |          
+                                                                                                                  |                                |          |--0.74%--_raw_spin_unlock_bh
+                                                                                                                  |                                |          |          |          
+                                                                                                                  |                                |          |           --0.70%--__local_bh_enable_ip
+                                                                                                                  |                                |          |          
+                                                                                                                  |                                |           --0.56%--udp_rmem_release
+                                                                                                                  |                                |          
+                                                                                                                  |                                |--1.51%--__arch_copy_to_user
+                                                                                                                  |                                |          
+                                                                                                                  |                                 --0.80%--skb_consume_udp
+                                                                                                                  |                                           |          
+                                                                                                                  |                                            --0.72%--skb_attempt_defer_free
+                                                                                                                  |          
+                                                                                                                   --1.95%--copy_msghdr_from_user
+                                                                                                                             |          
+                                                                                                                              --1.25%--import_iovec
+                                                                                                                                        |          
+                                                                                                                                         --0.64%--copy_iovec_from_user
+
+    20.66%     0.00%  receiver_batche  libc.so.6          [.] 0x0000007f8a54267c
+            |
+            ---0x7f8a54267c
+               |          
+                --20.14%--el0t_64_sync
+                          el0t_64_sync_handler
+                          |          
+                           --20.06%--el0_svc
+                                     |          
+                                      --18.37%--do_el0_svc
+                                                |          
+                                                 --18.29%--el0_svc_common.constprop.0
+                                                           |          
+                                                            --18.16%--invoke_syscall
+                                                                      |          
+                                                                       --18.09%--__arm64_sys_recvmmsg
+                                                                                 |          
+                                                                                  --17.77%--do_recvmmsg
+                                                                                            |          
+                                                                                             --16.40%--___sys_recvmsg
+                                                                                                       |          
+                                                                                                       |--13.21%--____sys_recvmsg
+                                                                                                       |          |          
+                                                                                                       |          |--6.44%--sock_recvmsg
+                                                                                                       |          |          |          
+                                                                                                       |          |           --6.32%--inet_recvmsg
+                                                                                                       |          |                     |          
+                                                                                                       |          |                      --6.19%--udp_recvmsg
+                                                                                                       |          |                                |          
+                                                                                                       |          |                                |--3.59%--__skb_recv_udp
+                                                                                                       |          |                                |          |          
+                                                                                                       |          |                                |           --2.51%--__skb_wait_for_more_packets
+                                                                                                       |          |                                |                     |          
+                                                                                                       |          |                                |                      --1.88%--schedule_timeout
+                                                                                                       |          |                                |                                |          
+                                                                                                       |          |                                |                                |--0.65%--schedule
+                                                                                                       |          |                                |                                |          |          
+                                                                                                       |          |                                |                                |           --0.58%--__schedule
+                                                                                                       |          |                                |                                |          
+                                                                                                       |          |                                |                                 --0.59%--add_timer
+                                                                                                       |          |                                |          
+                                                                                                       |          |                                 --1.01%--__arch_copy_to_user
+                                                                                                       |          |          
+                                                                                                       |           --6.03%--inet_recvmsg
+                                                                                                       |                     |          
+                                                                                                       |                      --5.84%--udp_recvmsg
+                                                                                                       |                                |          
+                                                                                                       |                                |--2.10%--__skb_recv_udp
+                                                                                                       |                                |          |          
+                                                                                                       |                                |          |--0.74%--_raw_spin_unlock_bh
+                                                                                                       |                                |          |          |          
+                                                                                                       |                                |          |           --0.70%--__local_bh_enable_ip
+                                                                                                       |                                |          |          
+                                                                                                       |                                |           --0.56%--udp_rmem_release
+                                                                                                       |                                |          
+                                                                                                       |                                |--1.51%--__arch_copy_to_user
+                                                                                                       |                                |          
+                                                                                                       |                                 --0.80%--skb_consume_udp
+                                                                                                       |                                           |          
+                                                                                                       |                                            --0.72%--skb_attempt_defer_free
+                                                                                                       |          
+                                                                                                        --1.95%--copy_msghdr_from_user
+                                                                                                                  |          
+                                                                                                                   --1.25%--import_iovec
+                                                                                                                             |          
+                                                                                                                              --0.64%--copy_iovec_from_user
+
+    20.14%     0.00%  receiver_batche  [kernel.kallsyms]  [k] el0t_64_sync
+            |
+            ---el0t_64_sync
+               el0t_64_sync_handler
+               |          
+                --20.06%--el0_svc
+                          |          
+                           --18.37%--do_el0_svc
+                                     |          
+                                      --18.29%--el0_svc_common.constprop.0
+                                                |          
+                                                 --18.16%--invoke_syscall
+                                                           |          
+                                                            --18.09%--__arm64_sys_recvmmsg
+                                                                      |          
+                                                                       --17.77%--do_recvmmsg
+                                                                                 |          
+                                                                                  --16.40%--___sys_recvmsg
+                                                                                            |          
+                                                                                            |--13.21%--____sys_recvmsg
+                                                                                            |          |          
+                                                                                            |          |--6.44%--sock_recvmsg
+                                                                                            |          |          |          
+                                                                                            |          |           --6.32%--inet_recvmsg
+                                                                                            |          |                     |          
+                                                                                            |          |                      --6.19%--udp_recvmsg
+                                                                                            |          |                                |          
+                                                                                            |          |                                |--3.59%--__skb_recv_udp
+                                                                                            |          |                                |          |          
+                                                                                            |          |                                |           --2.51%--__skb_wait_for_more_packets
+                                                                                            |          |                                |                     |          
+                                                                                            |          |                                |                      --1.88%--schedule_timeout
+                                                                                            |          |                                |                                |          
+                                                                                            |          |                                |                                |--0.65%--schedule
+                                                                                            |          |                                |                                |          |          
+                                                                                            |          |                                |                                |           --0.58%--__schedule
+                                                                                            |          |                                |                                |          
+                                                                                            |          |                                |                                 --0.59%--add_timer
+                                                                                            |          |                                |          
+                                                                                            |          |                                 --1.01%--__arch_copy_to_user
+                                                                                            |          |          
+                                                                                            |           --6.03%--inet_recvmsg
+                                                                                            |                     |          
+                                                                                            |                      --5.84%--udp_recvmsg
+                                                                                            |                                |          
+                                                                                            |                                |--2.10%--__skb_recv_udp
+                                                                                            |                                |          |          
+                                                                                            |                                |          |--0.74%--_raw_spin_unlock_bh
+                                                                                            |                                |          |          |          
+                                                                                            |                                |          |           --0.70%--__local_bh_enable_ip
+                                                                                            |                                |          |          
+                                                                                            |                                |           --0.56%--udp_rmem_release
+                                                                                            |                                |          
+                                                                                            |                                |--1.51%--__arch_copy_to_user
+                                                                                            |                                |          
+                                                                                            |                                 --0.80%--skb_consume_udp
+                                                                                            |                                           |          
+                                                                                            |                                            --0.72%--skb_attempt_defer_free
+                                                                                            |          
+                                                                                             --1.95%--copy_msghdr_from_user
+                                                                                                       |          
+                                                                                                        --1.25%--import_iovec
+                                                                                                                  |          
+                                                                                                                   --0.64%--copy_iovec_from_user
+
+    20.14%     0.00%  receiver_batche  [kernel.kallsyms]  [k] el0t_64_sync_handler
+            |
+            ---el0t_64_sync_handler
+               |          
+                --20.06%--el0_svc
+                          |          
+                           --18.37%--do_el0_svc
+                                     |          
+                                      --18.29%--el0_svc_common.constprop.0
+                                                |          
+                                                 --18.16%--invoke_syscall
+                                                           |          
+                                                            --18.09%--__arm64_sys_recvmmsg
+                                                                      |          
+                                                                       --17.77%--do_recvmmsg
+                                                                                 |          
+                                                                                  --16.40%--___sys_recvmsg
+                                                                                            |          
+                                                                                            |--13.21%--____sys_recvmsg
+                                                                                            |          |          
+                                                                                            |          |--6.44%--sock_recvmsg
+                                                                                            |          |          |          
+                                                                                            |          |           --6.32%--inet_recvmsg
+                                                                                            |          |                     |          
+                                                                                            |          |                      --6.19%--udp_recvmsg
+                                                                                            |          |                                |          
+                                                                                            |          |                                |--3.59%--__skb_recv_udp
+                                                                                            |          |                                |          |          
+                                                                                            |          |                                |           --2.51%--__skb_wait_for_more_packets
+                                                                                            |          |                                |                     |          
+                                                                                            |          |                                |                      --1.88%--schedule_timeout
+                                                                                            |          |                                |                                |          
+                                                                                            |          |                                |                                |--0.65%--schedule
+                                                                                            |          |                                |                                |          |          
+                                                                                            |          |                                |                                |           --0.58%--__schedule
+                                                                                            |          |                                |                                |          
+                                                                                            |          |                                |                                 --0.59%--add_timer
+                                                                                            |          |                                |          
+                                                                                            |          |                                 --1.01%--__arch_copy_to_user
+                                                                                            |          |          
+                                                                                            |           --6.03%--inet_recvmsg
+                                                                                            |                     |          
+                                                                                            |                      --5.84%--udp_recvmsg
+                                                                                            |                                |          
+                                                                                            |                                |--2.10%--__skb_recv_udp
+                                                                                            |                                |          |          
+                                                                                            |                                |          |--0.74%--_raw_spin_unlock_bh
+                                                                                            |                                |          |          |          
+                                                                                            |                                |          |           --0.70%--__local_bh_enable_ip
+                                                                                            |                                |          |          
+                                                                                            |                                |           --0.56%--udp_rmem_release
+                                                                                            |                                |          
+                                                                                            |                                |--1.51%--__arch_copy_to_user
+                                                                                            |                                |          
+                                                                                            |                                 --0.80%--skb_consume_udp
+                                                                                            |                                           |          
+                                                                                            |                                            --0.72%--skb_attempt_defer_free
+                                                                                            |          
+                                                                                             --1.95%--copy_msghdr_from_user
+                                                                                                       |          
+                                                                                                        --1.25%--import_iovec
+                                                                                                                  |          
+                                                                                                                   --0.64%--copy_iovec_from_user
+
+    20.06%     1.37%  receiver_batche  [kernel.kallsyms]  [k] el0_svc
+            |          
+            |--18.69%--el0_svc
+            |          |          
+            |           --18.37%--do_el0_svc
+            |                     |          
+            |                      --18.29%--el0_svc_common.constprop.0
+            |                                |          
+            |                                 --18.16%--invoke_syscall
+            |                                           |          
+            |                                            --18.09%--__arm64_sys_recvmmsg
+            |                                                      |          
+            |                                                       --17.77%--do_recvmmsg
+            |                                                                 |          
+            |                                                                  --16.40%--___sys_recvmsg
+            |                                                                            |          
+            |                                                                            |--13.21%--____sys_recvmsg
+            |                                                                            |          |          
+            |                                                                            |          |--6.44%--sock_recvmsg
+            |                                                                            |          |          |          
+            |                                                                            |          |           --6.32%--inet_recvmsg
+            |                                                                            |          |                     |          
+            |                                                                            |          |                      --6.19%--udp_recvmsg
+            |                                                                            |          |                                |          
+            |                                                                            |          |                                |--3.59%--__skb_recv_udp
+            |                                                                            |          |                                |          |          
+            |                                                                            |          |                                |           --2.51%--__skb_wait_for_more_packets
+            |                                                                            |          |                                |                     |          
+            |                                                                            |          |                                |                      --1.88%--schedule_timeout
+            |                                                                            |          |                                |                                |          
+            |                                                                            |          |                                |                                |--0.65%--schedule
+            |                                                                            |          |                                |                                |          |          
+            |                                                                            |          |                                |                                |           --0.58%--__schedule
+            |                                                                            |          |                                |                                |          
+            |                                                                            |          |                                |                                 --0.59%--add_timer
+            |                                                                            |          |                                |          
+            |                                                                            |          |                                 --1.01%--__arch_copy_to_user
+            |                                                                            |          |          
+            |                                                                            |           --6.03%--inet_recvmsg
+            |                                                                            |                     |          
+            |                                                                            |                      --5.84%--udp_recvmsg
+            |                                                                            |                                |          
+            |                                                                            |                                |--2.10%--__skb_recv_udp
+            |                                                                            |                                |          |          
+            |                                                                            |                                |          |--0.74%--_raw_spin_unlock_bh
+            |                                                                            |                                |          |          |          
+            |                                                                            |                                |          |           --0.70%--__local_bh_enable_ip
+            |                                                                            |                                |          |          
+            |                                                                            |                                |           --0.56%--udp_rmem_release
+            |                                                                            |                                |          
+            |                                                                            |                                |--1.51%--__arch_copy_to_user
+            |                                                                            |                                |          
+            |                                                                            |                                 --0.80%--skb_consume_udp
+            |                                                                            |                                           |          
+            |                                                                            |                                            --0.72%--skb_attempt_defer_free
+            |                                                                            |          
+            |                                                                             --1.95%--copy_msghdr_from_user
+            |                                                                                       |          
+            |                                                                                        --1.25%--import_iovec
+            |                                                                                                  |          
+            |                                                                                                   --0.64%--copy_iovec_from_user
+            |          
+             --1.37%--_start
+                       __libc_start_main
+                       0x7f8a4e229c
+                       main
+                       recvmmsg
+                       0x7f8a54269c
+                       0x7f8a54267c
+                       el0t_64_sync
+                       el0t_64_sync_handler
+                       el0_svc
+
+    18.45%     0.08%  receiver_batche  [kernel.kallsyms]  [k] do_el0_svc
+            |          
+             --18.37%--do_el0_svc
+                       |          
+                        --18.29%--el0_svc_common.constprop.0
+                                  |          
+                                   --18.16%--invoke_syscall
+                                             |          
+                                              --18.09%--__arm64_sys_recvmmsg
+                                                        |          
+                                                         --17.77%--do_recvmmsg
+                                                                   |          
+                                                                    --16.40%--___sys_recvmsg
+                                                                              |          
+                                                                              |--13.21%--____sys_recvmsg
+                                                                              |          |          
+                                                                              |          |--6.44%--sock_recvmsg
+                                                                              |          |          |          
+                                                                              |          |           --6.32%--inet_recvmsg
+                                                                              |          |                     |          
+                                                                              |          |                      --6.19%--udp_recvmsg
+                                                                              |          |                                |          
+                                                                              |          |                                |--3.59%--__skb_recv_udp
+                                                                              |          |                                |          |          
+                                                                              |          |                                |           --2.51%--__skb_wait_for_more_packets
+                                                                              |          |                                |                     |          
+                                                                              |          |                                |                      --1.88%--schedule_timeout
+                                                                              |          |                                |                                |          
+                                                                              |          |                                |                                |--0.65%--schedule
+                                                                              |          |                                |                                |          |          
+                                                                              |          |                                |                                |           --0.58%--__schedule
+                                                                              |          |                                |                                |          
+                                                                              |          |                                |                                 --0.59%--add_timer
+                                                                              |          |                                |          
+                                                                              |          |                                 --1.01%--__arch_copy_to_user
+                                                                              |          |          
+                                                                              |           --6.03%--inet_recvmsg
+                                                                              |                     |          
+                                                                              |                      --5.84%--udp_recvmsg
+                                                                              |                                |          
+                                                                              |                                |--2.10%--__skb_recv_udp
+                                                                              |                                |          |          
+                                                                              |                                |          |--0.74%--_raw_spin_unlock_bh
+                                                                              |                                |          |          |          
+                                                                              |                                |          |           --0.70%--__local_bh_enable_ip
+                                                                              |                                |          |          
+                                                                              |                                |           --0.56%--udp_rmem_release
+                                                                              |                                |          
+                                                                              |                                |--1.51%--__arch_copy_to_user
+                                                                              |                                |          
+                                                                              |                                 --0.80%--skb_consume_udp
+                                                                              |                                           |          
+                                                                              |                                            --0.72%--skb_attempt_defer_free
+                                                                              |          
+                                                                               --1.95%--copy_msghdr_from_user
+                                                                                         |          
+                                                                                          --1.25%--import_iovec
+                                                                                                    |          
+                                                                                                     --0.64%--copy_iovec_from_user
+
+    18.29%     0.07%  receiver_batche  [kernel.kallsyms]  [k] el0_svc_common.constprop.0
+            |          
+             --18.21%--el0_svc_common.constprop.0
+                       |          
+                        --18.16%--invoke_syscall
+                                  |          
+                                   --18.09%--__arm64_sys_recvmmsg
+                                             |          
+                                              --17.77%--do_recvmmsg
+                                                        |          
+                                                         --16.40%--___sys_recvmsg
+                                                                   |          
+                                                                   |--13.21%--____sys_recvmsg
+                                                                   |          |          
+                                                                   |          |--6.44%--sock_recvmsg
+                                                                   |          |          |          
+                                                                   |          |           --6.32%--inet_recvmsg
+                                                                   |          |                     |          
+                                                                   |          |                      --6.19%--udp_recvmsg
+                                                                   |          |                                |          
+                                                                   |          |                                |--3.59%--__skb_recv_udp
+                                                                   |          |                                |          |          
+                                                                   |          |                                |           --2.51%--__skb_wait_for_more_packets
+                                                                   |          |                                |                     |          
+                                                                   |          |                                |                      --1.88%--schedule_timeout
+                                                                   |          |                                |                                |          
+                                                                   |          |                                |                                |--0.65%--schedule
+                                                                   |          |                                |                                |          |          
+                                                                   |          |                                |                                |           --0.58%--__schedule
+                                                                   |          |                                |                                |          
+                                                                   |          |                                |                                 --0.59%--add_timer
+                                                                   |          |                                |          
+                                                                   |          |                                 --1.01%--__arch_copy_to_user
+                                                                   |          |          
+                                                                   |           --6.03%--inet_recvmsg
+                                                                   |                     |          
+                                                                   |                      --5.84%--udp_recvmsg
+                                                                   |                                |          
+                                                                   |                                |--2.10%--__skb_recv_udp
+                                                                   |                                |          |          
+                                                                   |                                |          |--0.74%--_raw_spin_unlock_bh
+                                                                   |                                |          |          |          
+                                                                   |                                |          |           --0.70%--__local_bh_enable_ip
+                                                                   |                                |          |          
+                                                                   |                                |           --0.56%--udp_rmem_release
+                                                                   |                                |          
+                                                                   |                                |--1.51%--__arch_copy_to_user
+                                                                   |                                |          
+                                                                   |                                 --0.80%--skb_consume_udp
+                                                                   |                                           |          
+                                                                   |                                            --0.72%--skb_attempt_defer_free
+                                                                   |          
+                                                                    --1.95%--copy_msghdr_from_user
+                                                                              |          
+                                                                               --1.25%--import_iovec
+                                                                                         |          
+                                                                                          --0.64%--copy_iovec_from_user
+
+    18.24%     0.12%  receiver_batche  [kernel.kallsyms]  [k] invoke_syscall
+            |          
+             --18.13%--invoke_syscall
+                       |          
+                        --18.09%--__arm64_sys_recvmmsg
+                                  |          
+                                   --17.77%--do_recvmmsg
+                                             |          
+                                              --16.40%--___sys_recvmsg
+                                                        |          
+                                                        |--13.21%--____sys_recvmsg
+                                                        |          |          
+                                                        |          |--6.44%--sock_recvmsg
+                                                        |          |          |          
+                                                        |          |           --6.32%--inet_recvmsg
+                                                        |          |                     |          
+                                                        |          |                      --6.19%--udp_recvmsg
+                                                        |          |                                |          
+                                                        |          |                                |--3.59%--__skb_recv_udp
+                                                        |          |                                |          |          
+                                                        |          |                                |           --2.51%--__skb_wait_for_more_packets
+                                                        |          |                                |                     |          
+                                                        |          |                                |                      --1.88%--schedule_timeout
+                                                        |          |                                |                                |          
+                                                        |          |                                |                                |--0.65%--schedule
+                                                        |          |                                |                                |          |          
+                                                        |          |                                |                                |           --0.58%--__schedule
+                                                        |          |                                |                                |          
+                                                        |          |                                |                                 --0.59%--add_timer
+                                                        |          |                                |          
+                                                        |          |                                 --1.01%--__arch_copy_to_user
+                                                        |          |          
+                                                        |           --6.03%--inet_recvmsg
+                                                        |                     |          
+                                                        |                      --5.84%--udp_recvmsg
+                                                        |                                |          
+                                                        |                                |--2.10%--__skb_recv_udp
+                                                        |                                |          |          
+                                                        |                                |          |--0.74%--_raw_spin_unlock_bh
+                                                        |                                |          |          |          
+                                                        |                                |          |           --0.70%--__local_bh_enable_ip
+                                                        |                                |          |          
+                                                        |                                |           --0.56%--udp_rmem_release
+                                                        |                                |          
+                                                        |                                |--1.51%--__arch_copy_to_user
+                                                        |                                |          
+                                                        |                                 --0.80%--skb_consume_udp
+                                                        |                                           |          
+                                                        |                                            --0.72%--skb_attempt_defer_free
+                                                        |          
+                                                         --1.95%--copy_msghdr_from_user
+                                                                   |          
+                                                                    --1.25%--import_iovec
+                                                                              |          
+                                                                               --0.64%--copy_iovec_from_user
+
+    18.14%     0.09%  receiver_batche  [kernel.kallsyms]  [k] __arm64_sys_recvmmsg
+            |          
+             --18.05%--__arm64_sys_recvmmsg
+                       |          
+                        --17.77%--do_recvmmsg
+                                  |          
+                                   --16.40%--___sys_recvmsg
+                                             |          
+                                             |--13.21%--____sys_recvmsg
+                                             |          |          
+                                             |          |--6.44%--sock_recvmsg
+                                             |          |          |          
+                                             |          |           --6.32%--inet_recvmsg
+                                             |          |                     |          
+                                             |          |                      --6.19%--udp_recvmsg
+                                             |          |                                |          
+                                             |          |                                |--3.59%--__skb_recv_udp
+                                             |          |                                |          |          
+                                             |          |                                |           --2.51%--__skb_wait_for_more_packets
+                                             |          |                                |                     |          
+                                             |          |                                |                      --1.88%--schedule_timeout
+                                             |          |                                |                                |          
+                                             |          |                                |                                |--0.65%--schedule
+                                             |          |                                |                                |          |          
+                                             |          |                                |                                |           --0.58%--__schedule
+                                             |          |                                |                                |          
+                                             |          |                                |                                 --0.59%--add_timer
+                                             |          |                                |          
+                                             |          |                                 --1.01%--__arch_copy_to_user
+                                             |          |          
+                                             |           --6.03%--inet_recvmsg
+                                             |                     |          
+                                             |                      --5.84%--udp_recvmsg
+                                             |                                |          
+                                             |                                |--2.10%--__skb_recv_udp
+                                             |                                |          |          
+                                             |                                |          |--0.74%--_raw_spin_unlock_bh
+                                             |                                |          |          |          
+                                             |                                |          |           --0.70%--__local_bh_enable_ip
+                                             |                                |          |          
+                                             |                                |           --0.56%--udp_rmem_release
+                                             |                                |          
+                                             |                                |--1.51%--__arch_copy_to_user
+                                             |                                |          
+                                             |                                 --0.80%--skb_consume_udp
+                                             |                                           |          
+                                             |                                            --0.72%--skb_attempt_defer_free
+                                             |          
+                                              --1.95%--copy_msghdr_from_user
+                                                        |          
+                                                         --1.25%--import_iovec
+                                                                   |          
+                                                                    --0.64%--copy_iovec_from_user
+
+    17.80%     0.69%  receiver_batche  [kernel.kallsyms]  [k] do_recvmmsg
+            |          
+            |--17.11%--do_recvmmsg
+            |          |          
+            |           --16.40%--___sys_recvmsg
+            |                     |          
+            |                     |--13.21%--____sys_recvmsg
+            |                     |          |          
+            |                     |          |--6.44%--sock_recvmsg
+            |                     |          |          |          
+            |                     |          |           --6.32%--inet_recvmsg
+            |                     |          |                     |          
+            |                     |          |                      --6.19%--udp_recvmsg
+            |                     |          |                                |          
+            |                     |          |                                |--3.59%--__skb_recv_udp
+            |                     |          |                                |          |          
+            |                     |          |                                |           --2.51%--__skb_wait_for_more_packets
+            |                     |          |                                |                     |          
+            |                     |          |                                |                      --1.88%--schedule_timeout
+            |                     |          |                                |                                |          
+            |                     |          |                                |                                |--0.65%--schedule
+            |                     |          |                                |                                |          |          
+            |                     |          |                                |                                |           --0.58%--__schedule
+            |                     |          |                                |                                |          
+            |                     |          |                                |                                 --0.59%--add_timer
+            |                     |          |                                |          
+            |                     |          |                                 --1.01%--__arch_copy_to_user
+            |                     |          |          
+            |                     |           --6.03%--inet_recvmsg
+            |                     |                     |          
+            |                     |                      --5.84%--udp_recvmsg
+            |                     |                                |          
+            |                     |                                |--2.10%--__skb_recv_udp
+            |                     |                                |          |          
+            |                     |                                |          |--0.74%--_raw_spin_unlock_bh
+            |                     |                                |          |          |          
+            |                     |                                |          |           --0.70%--__local_bh_enable_ip
+            |                     |                                |          |          
+            |                     |                                |           --0.56%--udp_rmem_release
+            |                     |                                |          
+            |                     |                                |--1.51%--__arch_copy_to_user
+            |                     |                                |          
+            |                     |                                 --0.80%--skb_consume_udp
+            |                     |                                           |          
+            |                     |                                            --0.72%--skb_attempt_defer_free
+            |                     |          
+            |                      --1.95%--copy_msghdr_from_user
+            |                                |          
+            |                                 --1.25%--import_iovec
+            |                                           |          
+            |                                            --0.64%--copy_iovec_from_user
+            |          
+             --0.69%--_start
+                       __libc_start_main
+                       0x7f8a4e229c
+                       main
+                       recvmmsg
+                       0x7f8a54269c
+                       0x7f8a54267c
+                       el0t_64_sync
+                       el0t_64_sync_handler
+                       el0_svc
+                       do_el0_svc
+                       el0_svc_common.constprop.0
+                       invoke_syscall
+                       |          
+                        --0.66%--__arm64_sys_recvmmsg
+                                  do_recvmmsg
+
+    16.52%     0.35%  receiver_batche  [kernel.kallsyms]  [k] ___sys_recvmsg
+            |          
+             --16.17%--___sys_recvmsg
+                       |          
+                       |--13.21%--____sys_recvmsg
+                       |          |          
+                       |          |--6.44%--sock_recvmsg
+                       |          |          |          
+                       |          |           --6.32%--inet_recvmsg
+                       |          |                     |          
+                       |          |                      --6.19%--udp_recvmsg
+                       |          |                                |          
+                       |          |                                |--3.59%--__skb_recv_udp
+                       |          |                                |          |          
+                       |          |                                |           --2.51%--__skb_wait_for_more_packets
+                       |          |                                |                     |          
+                       |          |                                |                      --1.88%--schedule_timeout
+                       |          |                                |                                |          
+                       |          |                                |                                |--0.65%--schedule
+                       |          |                                |                                |          |          
+                       |          |                                |                                |           --0.58%--__schedule
+                       |          |                                |                                |          
+                       |          |                                |                                 --0.59%--add_timer
+                       |          |                                |          
+                       |          |                                 --1.01%--__arch_copy_to_user
+                       |          |          
+                       |           --6.03%--inet_recvmsg
+                       |                     |          
+                       |                      --5.84%--udp_recvmsg
+                       |                                |          
+                       |                                |--2.10%--__skb_recv_udp
+                       |                                |          |          
+                       |                                |          |--0.74%--_raw_spin_unlock_bh
+                       |                                |          |          |          
+                       |                                |          |           --0.70%--__local_bh_enable_ip
+                       |                                |          |          
+                       |                                |           --0.56%--udp_rmem_release
+                       |                                |          
+                       |                                |--1.51%--__arch_copy_to_user
+                       |                                |          
+                       |                                 --0.80%--skb_consume_udp
+                       |                                           |          
+                       |                                            --0.72%--skb_attempt_defer_free
+                       |          
+                        --1.95%--copy_msghdr_from_user
+                                  |          
+                                   --1.25%--import_iovec
+                                             |          
+                                              --0.64%--copy_iovec_from_user
+
+    13.32%     0.81%  receiver_batche  [kernel.kallsyms]  [k] ____sys_recvmsg
+            |          
+            |--12.51%--____sys_recvmsg
+            |          |          
+            |          |--6.44%--sock_recvmsg
+            |          |          |          
+            |          |           --6.32%--inet_recvmsg
+            |          |                     |          
+            |          |                      --6.19%--udp_recvmsg
+            |          |                                |          
+            |          |                                |--3.59%--__skb_recv_udp
+            |          |                                |          |          
+            |          |                                |           --2.51%--__skb_wait_for_more_packets
+            |          |                                |                     |          
+            |          |                                |                      --1.88%--schedule_timeout
+            |          |                                |                                |          
+            |          |                                |                                |--0.65%--schedule
+            |          |                                |                                |          |          
+            |          |                                |                                |           --0.58%--__schedule
+            |          |                                |                                |          
+            |          |                                |                                 --0.59%--add_timer
+            |          |                                |          
+            |          |                                 --1.01%--__arch_copy_to_user
+            |          |          
+            |           --6.03%--inet_recvmsg
+            |                     |          
+            |                      --5.84%--udp_recvmsg
+            |                                |          
+            |                                |--2.10%--__skb_recv_udp
+            |                                |          |          
+            |                                |          |--0.74%--_raw_spin_unlock_bh
+            |                                |          |          |          
+            |                                |          |           --0.70%--__local_bh_enable_ip
+            |                                |          |          
+            |                                |           --0.56%--udp_rmem_release
+            |                                |          
+            |                                |--1.51%--__arch_copy_to_user
+            |                                |          
+            |                                 --0.80%--skb_consume_udp
+            |                                           |          
+            |                                            --0.72%--skb_attempt_defer_free
+            |          
+             --0.81%--_start
+                       __libc_start_main
+                       0x7f8a4e229c
+                       main
+                       recvmmsg
+                       0x7f8a54269c
+                       0x7f8a54267c
+                       el0t_64_sync
+                       el0t_64_sync_handler
+                       el0_svc
+                       do_el0_svc
+                       el0_svc_common.constprop.0
+                       invoke_syscall
+                       __arm64_sys_recvmmsg
+                       do_recvmmsg
+                       |          
+                        --0.70%--___sys_recvmsg
+                                  ____sys_recvmsg
+
+    12.35%     0.20%  receiver_batche  [kernel.kallsyms]  [k] inet_recvmsg
+            |          
+             --12.14%--inet_recvmsg
+                       |          
+                        --12.03%--udp_recvmsg
+                                  |          
+                                  |--5.69%--__skb_recv_udp
+                                  |          |          
+                                  |          |--2.51%--__skb_wait_for_more_packets
+                                  |          |          |          
+                                  |          |           --1.88%--schedule_timeout
+                                  |          |                     |          
+                                  |          |                     |--0.65%--schedule
+                                  |          |                     |          |          
+                                  |          |                     |           --0.58%--__schedule
+                                  |          |                     |          
+                                  |          |                      --0.59%--add_timer
+                                  |          |          
+                                  |          |--0.91%--_raw_spin_unlock_bh
+                                  |          |          |          
+                                  |          |           --0.87%--__local_bh_enable_ip
+                                  |          |          
+                                  |           --0.56%--udp_rmem_release
+                                  |          
+                                  |--2.52%--__arch_copy_to_user
+                                  |          
+                                  |--1.12%--skb_consume_udp
+                                  |          |          
+                                  |           --0.99%--skb_attempt_defer_free
+                                  |          
+                                   --0.74%--_raw_spin_lock_bh
+
+    12.07%     1.19%  receiver_batche  [kernel.kallsyms]  [k] udp_recvmsg
+            |          
+            |--10.89%--udp_recvmsg
+            |          |          
+            |          |--5.69%--__skb_recv_udp
+            |          |          |          
+            |          |          |--2.51%--__skb_wait_for_more_packets
+            |          |          |          |          
+            |          |          |           --1.88%--schedule_timeout
+            |          |          |                     |          
+            |          |          |                     |--0.65%--schedule
+            |          |          |                     |          |          
+            |          |          |                     |           --0.58%--__schedule
+            |          |          |                     |          
+            |          |          |                      --0.59%--add_timer
+            |          |          |          
+            |          |          |--0.91%--_raw_spin_unlock_bh
+            |          |          |          |          
+            |          |          |           --0.87%--__local_bh_enable_ip
+            |          |          |          
+            |          |           --0.56%--udp_rmem_release
+            |          |          
+            |          |--2.52%--__arch_copy_to_user
+            |          |          
+            |          |--1.12%--skb_consume_udp
+            |          |          |          
+            |          |           --0.99%--skb_attempt_defer_free
+            |          |          
+            |           --0.74%--_raw_spin_lock_bh
+            |          
+             --1.19%--_start
+                       __libc_start_main
+                       0x7f8a4e229c
+                       main
+                       recvmmsg
+                       0x7f8a54269c
+                       0x7f8a54267c
+                       el0t_64_sync
+                       el0t_64_sync_handler
+                       el0_svc
+                       do_el0_svc
+                       el0_svc_common.constprop.0
+                       invoke_syscall
+                       __arm64_sys_recvmmsg
+                       do_recvmmsg
+                       ___sys_recvmsg
+                       ____sys_recvmsg
+                       |          
+                        --0.88%--inet_recvmsg
+                                  udp_recvmsg
+
+     6.48%     0.09%  receiver_batche  [kernel.kallsyms]  [k] sock_recvmsg
+            |          
+             --6.39%--sock_recvmsg
+                       |          
+                        --6.32%--inet_recvmsg
+                                  |          
+                                   --6.19%--udp_recvmsg
+                                             |          
+                                             |--3.59%--__skb_recv_udp
+                                             |          |          
+                                             |           --2.51%--__skb_wait_for_more_packets
+                                             |                     |          
+                                             |                      --1.88%--schedule_timeout
+                                             |                                |          
+                                             |                                |--0.65%--schedule
+                                             |                                |          |          
+                                             |                                |           --0.58%--__schedule
+                                             |                                |          
+                                             |                                 --0.59%--add_timer
+                                             |          
+                                              --1.01%--__arch_copy_to_user
+
+     5.73%     0.72%  receiver_batche  [kernel.kallsyms]  [k] __skb_recv_udp
+            |          
+            |--5.01%--__skb_recv_udp
+            |          |          
+            |          |--2.51%--__skb_wait_for_more_packets
+            |          |          |          
+            |          |           --1.88%--schedule_timeout
+            |          |                     |          
+            |          |                     |--0.65%--schedule
+            |          |                     |          |          
+            |          |                     |           --0.58%--__schedule
+            |          |                     |          
+            |          |                      --0.59%--add_timer
+            |          |          
+            |          |--0.91%--_raw_spin_unlock_bh
+            |          |          |          
+            |          |           --0.87%--__local_bh_enable_ip
+            |          |          
+            |           --0.56%--udp_rmem_release
+            |          
+             --0.72%--_start
+                       __libc_start_main
+                       0x7f8a4e229c
+                       main
+                       recvmmsg
+                       0x7f8a54269c
+                       0x7f8a54267c
+                       el0t_64_sync
+                       el0t_64_sync_handler
+                       el0_svc
+                       do_el0_svc
+                       el0_svc_common.constprop.0
+                       invoke_syscall
+                       __arm64_sys_recvmmsg
+                       do_recvmmsg
+                       ___sys_recvmsg
+                       ____sys_recvmsg
+                       |          
+                        --0.55%--sock_recvmsg
+                                  inet_recvmsg
+                                  |          
+                                   --0.52%--udp_recvmsg
+                                             __skb_recv_udp
+
+     2.52%     2.52%  receiver_batche  [kernel.kallsyms]  [k] __arch_copy_to_user
+            |
+            ---_start
+               __libc_start_main
+               0x7f8a4e229c
+               main
+               recvmmsg
+               0x7f8a54269c
+               0x7f8a54267c
+               el0t_64_sync
+               el0t_64_sync_handler
+               el0_svc
+               do_el0_svc
+               el0_svc_common.constprop.0
+               invoke_syscall
+               __arm64_sys_recvmmsg
+               do_recvmmsg
+               ___sys_recvmsg
+               ____sys_recvmsg
+               |          
+               |--1.51%--inet_recvmsg
+               |          udp_recvmsg
+               |          __arch_copy_to_user
+               |          
+                --1.01%--sock_recvmsg
+                          inet_recvmsg
+                          udp_recvmsg
+                          __arch_copy_to_user
+
+     2.51%     0.04%  receiver_batche  [kernel.kallsyms]  [k] __skb_wait_for_more_packets
+            |          
+             --2.47%--__skb_wait_for_more_packets
+                       |          
+                        --1.88%--schedule_timeout
+                                  |          
+                                  |--0.65%--schedule
+                                  |          |          
+                                  |           --0.58%--__schedule
+                                  |          
+                                   --0.59%--add_timer
+
+     1.95%     0.43%  receiver_batche  [kernel.kallsyms]  [k] copy_msghdr_from_user
+            |          
+             --1.52%--copy_msghdr_from_user
+                       |          
+                        --1.25%--import_iovec
+                                  |          
+                                   --0.64%--copy_iovec_from_user
+
+     1.88%     0.12%  receiver_batche  [kernel.kallsyms]  [k] schedule_timeout
+            |          
+             --1.76%--schedule_timeout
+                       |          
+                       |--0.65%--schedule
+                       |          |          
+                       |           --0.58%--__schedule
+                       |          
+                        --0.59%--add_timer
+
+     1.33%     0.15%  receiver_batche  [kernel.kallsyms]  [k] import_iovec
+            |          
+             --1.18%--import_iovec
+                       |          
+                        --0.64%--copy_iovec_from_user
+
+     1.19%     0.19%  receiver_batche  [kernel.kallsyms]  [k] skb_consume_udp
+            |          
+             --0.99%--skb_consume_udp
+                       skb_attempt_defer_free
+
+     1.02%     0.15%  receiver_batche  [kernel.kallsyms]  [k] _raw_spin_unlock_bh
+            |          
+             --0.87%--_raw_spin_unlock_bh
+                       __local_bh_enable_ip
+
+     0.99%     0.99%  receiver_batche  [kernel.kallsyms]  [k] skb_attempt_defer_free
+            |
+            ---_start
+               __libc_start_main
+               0x7f8a4e229c
+               main
+               recvmmsg
+               0x7f8a54269c
+               0x7f8a54267c
+               el0t_64_sync
+               el0t_64_sync_handler
+               el0_svc
+               do_el0_svc
+               el0_svc_common.constprop.0
+               invoke_syscall
+               __arm64_sys_recvmmsg
+               do_recvmmsg
+               ___sys_recvmsg
+               ____sys_recvmsg
+               |          
+                --0.72%--inet_recvmsg
+                          udp_recvmsg
+                          skb_consume_udp
+                          skb_attempt_defer_free
+
+     0.95%     0.95%  receiver_batche  [kernel.kallsyms]  [k] _raw_spin_unlock_irqrestore
+            |
+            ---_start
+               __libc_start_main
+               0x7f8a4e229c
+               main
+               recvmmsg
+               0x7f8a54269c
+               0x7f8a54267c
+               el0t_64_sync
+               el0t_64_sync_handler
+               el0_svc
+               do_el0_svc
+               el0_svc_common.constprop.0
+               invoke_syscall
+               __arm64_sys_recvmmsg
+               do_recvmmsg
+               ___sys_recvmsg
+               ____sys_recvmsg
+               sock_recvmsg
+               inet_recvmsg
+               udp_recvmsg
+               __skb_recv_udp
+               __skb_wait_for_more_packets
+               |          
+                --0.74%--schedule_timeout
+
+     0.95%     0.95%  receiver_batche  [kernel.kallsyms]  [k] __local_bh_enable_ip
+            |
+            ---_start
+               __libc_start_main
+               0x7f8a4e229c
+               main
+               recvmmsg
+               0x7f8a54269c
+               0x7f8a54267c
+               el0t_64_sync
+               el0t_64_sync_handler
+               el0_svc
+               do_el0_svc
+               el0_svc_common.constprop.0
+               invoke_syscall
+               __arm64_sys_recvmmsg
+               do_recvmmsg
+               ___sys_recvmsg
+               ____sys_recvmsg
+               |          
+                --0.74%--inet_recvmsg
+                          udp_recvmsg
+                          __skb_recv_udp
+                          |          
+                           --0.70%--_raw_spin_unlock_bh
+                                     __local_bh_enable_ip
+
+     0.74%     0.74%  receiver_batche  [kernel.kallsyms]  [k] __pi_memset_generic
+            |
+            ---_start
+               __libc_start_main
+               0x7f8a4e229c
+               main
+               recvmmsg
+               0x7f8a54269c
+               0x7f8a54267c
+               el0t_64_sync
+               el0t_64_sync_handler
+               el0_svc
+               do_el0_svc
+               el0_svc_common.constprop.0
+               invoke_syscall
+               __arm64_sys_recvmmsg
+               |          
+                --0.66%--do_recvmmsg
+
+     0.74%     0.74%  receiver_batche  [kernel.kallsyms]  [k] _raw_spin_lock_bh
+            |
+            ---_start
+               __libc_start_main
+               0x7f8a4e229c
+               main
+               recvmmsg
+               0x7f8a54269c
+               0x7f8a54267c
+               el0t_64_sync
+               el0t_64_sync_handler
+               el0_svc
+               do_el0_svc
+               el0_svc_common.constprop.0
+               invoke_syscall
+               __arm64_sys_recvmmsg
+               do_recvmmsg
+               ___sys_recvmsg
+               ____sys_recvmsg
+
+     0.73%     0.15%  receiver_batche  [kernel.kallsyms]  [k] schedule
+            |          
+             --0.58%--schedule
+                       __schedule
+
+     0.71%     0.71%  receiver_batche  receiver_batched   [.] clock_gettime@plt
+            |
+            ---_start
+               __libc_start_main
+               0x7f8a4e229c
+               main
+               |          
+                --0.59%--nll::receiver::process_packet(nll::BinaryLogger&, nll::receiver::ProcessingStats&, nll::receiver::ReceivedPacket const&, unsigned long)
+                          clock_gettime@plt
+
+     0.65%     0.61%  receiver_batche  [kernel.kallsyms]  [k] _raw_spin_lock
+            |          
+             --0.61%--_start
+                       __libc_start_main
+                       0x7f8a4e229c
+                       main
+                       recvmmsg
+                       0x7f8a54269c
+                       0x7f8a54267c
+                       el0t_64_sync
+                       el0t_64_sync_handler
+                       el0_svc
+                       do_el0_svc
+                       el0_svc_common.constprop.0
+                       invoke_syscall
+                       __arm64_sys_recvmmsg
+                       do_recvmmsg
+                       ___sys_recvmsg
+                       ____sys_recvmsg
+
+     0.64%     0.64%  receiver_batche  [kernel.kallsyms]  [k] copy_iovec_from_user
+            |
+            ---_start
+               __libc_start_main
+               0x7f8a4e229c
+               main
+               recvmmsg
+               0x7f8a54269c
+               0x7f8a54267c
+               el0t_64_sync
+               el0t_64_sync_handler
+               el0_svc
+               do_el0_svc
+               el0_svc_common.constprop.0
+               invoke_syscall
+               __arm64_sys_recvmmsg
+               do_recvmmsg
+               ___sys_recvmsg
+               copy_msghdr_from_user
+               import_iovec
+               copy_iovec_from_user
+
+     0.63%     0.04%  receiver_batche  [kernel.kallsyms]  [k] add_timer
+            |          
+             --0.59%--add_timer
+
+     0.59%     0.35%  receiver_batche  [kernel.kallsyms]  [k] udp_rmem_release
+     0.58%     0.21%  receiver_batche  [kernel.kallsyms]  [k] __schedule
+     0.52%     0.52%  receiver_batche  libc.so.6          [.] 0x000000000008267c
+            |
+            ---_start
+               __libc_start_main
+               0x7f8a4e229c
+               main
+               recvmmsg
+               0x7f8a54269c
+               0x7f8a54267c
+
+     0.43%     0.43%  receiver_batche  [kernel.kallsyms]  [k] __skb_try_recv_from_queue
+     0.41%     0.41%  receiver_batche  [kernel.kallsyms]  [k] __arch_copy_from_user
+     0.39%     0.00%  receiver_batche  [kernel.kallsyms]  [k] timer_delete_sync
+     0.38%     0.38%  receiver_batche  [kernel.kallsyms]  [k] _raw_spin_unlock
+     0.37%     0.37%  receiver_batche  [kernel.kallsyms]  [k] finish_task_switch.isra.0
+     0.32%     0.32%  receiver_batche  [kernel.kallsyms]  [k] __import_iovec
+     0.30%     0.30%  receiver_batche  [kernel.kallsyms]  [k] fdget
+     0.29%     0.29%  receiver_batche  [kernel.kallsyms]  [k] import_ubuf
+     0.27%     0.27%  receiver_batche  [kernel.kallsyms]  [k] __copy_msghdr
+     0.25%     0.25%  receiver_batche  [kernel.kallsyms]  [k] __sk_mem_reduce_allocated
+     0.25%     0.16%  receiver_batche  [kernel.kallsyms]  [k] exit_to_user_mode_loop
+     0.16%     0.12%  receiver_batche  [kernel.kallsyms]  [k] lock_timer_base
+     0.16%     0.16%  receiver_batche  [kernel.kallsyms]  [k] _raw_spin_lock_irqsave
+     0.15%     0.08%  receiver_batche  [kernel.kallsyms]  [k] __timer_delete_sync
+     0.15%     0.15%  receiver_batche  [kernel.kallsyms]  [k] finish_wait
+     0.13%     0.13%  receiver_batche  [kernel.kallsyms]  [k] timer_init_key
+     0.12%     0.04%  receiver_batche  [kernel.kallsyms]  [k] __mod_timer
+     0.12%     0.12%  receiver_batche  libc.so.6          [.] 0x000000000008261c
+     0.12%     0.00%  receiver_batche  libc.so.6          [.] 0x0000007f8a54261c
+     0.12%     0.12%  receiver_batche  [kernel.kallsyms]  [k] kfree
+     0.12%     0.00%  receiver_batche  [kernel.kallsyms]  [k] prepare_to_wait_exclusive
+     0.12%     0.12%  receiver_batche  [kernel.kallsyms]  [k] _copy_to_iter
+     0.08%     0.08%  receiver_batche  libc.so.6          [.] 0x0000000000082600
+     0.08%     0.00%  receiver_batche  libc.so.6          [.] 0x0000007f8a54269b
+     0.08%     0.00%  receiver_batche  libc.so.6          [.] 0x0000007f8a542600
+     0.08%     0.08%  receiver_batche  [kernel.kallsyms]  [k] __rseq_handle_notify_resume
+     0.07%     0.07%  receiver_batche  [kernel.kallsyms]  [k] security_socket_recvmsg
+     0.05%     0.05%  receiver_batche  [kernel.kallsyms]  [k] blkcg_maybe_throttle_current
+     0.04%     0.04%  receiver_batche  receiver_batched   [.] recvmmsg@plt
+     0.04%     0.04%  receiver_batche  libc.so.6          [.] 0x000000000008269c
+     0.04%     0.04%  receiver_batche  [kernel.kallsyms]  [k] rseq_get_rseq_cs_ptr_val
+     0.04%     0.04%  receiver_batche  [kernel.kallsyms]  [k] queued_spin_lock_slowpath
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] el0t_64_sync
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] el0t_64_sync_handler
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] el0_svc
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] do_el0_svc
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] el0_svc_common.constprop.0
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] invoke_syscall
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] __arm64_sys_execve
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] do_execveat_common.isra.0
+     0.00%     0.00%  sh               dash               [.] 0x0000005578044af0
+     0.00%     0.00%  sh               libc.so.6          [.] __libc_start_main
+     0.00%     0.00%  sh               libc.so.6          [.] 0x0000007f9307229c
+     0.00%     0.00%  sh               dash               [.] 0x000000557804498c
+     0.00%     0.00%  sh               dash               [.] 0x00000055780476b8
+     0.00%     0.00%  sh               dash               [.] 0x0000005578046a58
+     0.00%     0.00%  sh               dash               [.] 0x0000005578046a90
+     0.00%     0.00%  sh               dash               [.] 0x0000005578047d34
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] alloc_pages_mpol
+     0.00%     0.00%  sh               dash               [.] 0x000000557804ead0
+     0.00%     0.00%  sh               dash               [.] 0x0000005578048a64
+     0.00%     0.00%  sh               dash               [.] 0x00000055780483ef
+     0.00%     0.00%  sh               libc.so.6          [.] execve
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] alloc_bprm
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] mm_alloc
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] mm_init
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] pgd_alloc
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] alloc_pages_noprof
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] alloc_frozen_pages_noprof
+     0.00%     0.00%  receiver_batche  receiver_batched   [.] nll::receiver::apply_affinity(int)
+     0.00%     0.00%  receiver_batche  [kernel.kallsyms]  [k] folio_add_file_rmap_ptes
+     0.00%     0.00%  receiver_batche  receiver_batched   [.] nll::log::logf(int, char const*, ...)
+     0.00%     0.00%  receiver_batche  libc.so.6          [.] _IO_fwrite
+     0.00%     0.00%  receiver_batche  [kernel.kallsyms]  [k] el0_ia
+     0.00%     0.00%  receiver_batche  [kernel.kallsyms]  [k] do_mem_abort
+     0.00%     0.00%  receiver_batche  [kernel.kallsyms]  [k] do_translation_fault
+     0.00%     0.00%  receiver_batche  [kernel.kallsyms]  [k] do_page_fault
+     0.00%     0.00%  receiver_batche  [kernel.kallsyms]  [k] handle_mm_fault
+     0.00%     0.00%  receiver_batche  [kernel.kallsyms]  [k] __handle_mm_fault
+     0.00%     0.00%  receiver_batche  [kernel.kallsyms]  [k] filemap_map_pages
+     0.00%     0.00%  receiver_batche  [kernel.kallsyms]  [k] set_pte_range
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] is_affected_midr_range_list
+     0.00%     0.00%  sh               [unknown]          [k] 0x0000007f8f34028c
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] bprm_execve
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] load_elf_binary
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] setup_new_exec
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] arch_setup_new_exec
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] do_set_tsc_mode
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] update_cntkctl_el1
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] this_cpu_has_cap
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] finish_task_switch.isra.0
+     0.00%     0.00%  sh               dash               [.] 0x000000557804ea6b
+     0.00%     0.00%  sh               libc.so.6          [.] __vfork
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] ret_from_fork
+     0.00%     0.00%  sh               [kernel.kallsyms]  [k] schedule_tail
+     0.00%     0.00%  receiver_batche  libc.so.6          [.] pthread_setaffinity_np
+     0.00%     0.00%  receiver_batche  [kernel.kallsyms]  [k] __arm64_sys_sched_setaffinity
+     0.00%     0.00%  receiver_batche  [kernel.kallsyms]  [k] sched_setaffinity
+     0.00%     0.00%  receiver_batche  [kernel.kallsyms]  [k] __sched_setaffinity
+     0.00%     0.00%  receiver_batche  [kernel.kallsyms]  [k] __set_cpus_allowed_ptr
+     0.00%     0.00%  receiver_batche  [kernel.kallsyms]  [k] __set_cpus_allowed_ptr_locked
+     0.00%     0.00%  receiver_batche  [kernel.kallsyms]  [k] affine_move_task
+     0.00%     0.00%  receiver_batche  [kernel.kallsyms]  [k] preempt_schedule
+     0.00%     0.00%  perf-exec        [kernel.kallsyms]  [k] perf_event_exec
+     0.00%     0.00%  perf-exec        [unknown]          [k] 0x0000007f8f34028c
+     0.00%     0.00%  perf-exec        [kernel.kallsyms]  [k] el0t_64_sync
+     0.00%     0.00%  perf-exec        [kernel.kallsyms]  [k] el0t_64_sync_handler
+     0.00%     0.00%  perf-exec        [kernel.kallsyms]  [k] el0_svc
+     0.00%     0.00%  perf-exec        [kernel.kallsyms]  [k] do_el0_svc
+     0.00%     0.00%  perf-exec        [kernel.kallsyms]  [k] el0_svc_common.constprop.0
+     0.00%     0.00%  perf-exec        [kernel.kallsyms]  [k] invoke_syscall
+     0.00%     0.00%  perf-exec        [kernel.kallsyms]  [k] __arm64_sys_execve
+     0.00%     0.00%  perf-exec        [kernel.kallsyms]  [k] do_execveat_common.isra.0
+     0.00%     0.00%  perf-exec        [kernel.kallsyms]  [k] bprm_execve
+     0.00%     0.00%  perf-exec        [kernel.kallsyms]  [k] load_elf_binary
+     0.00%     0.00%  perf-exec        [kernel.kallsyms]  [k] begin_new_exec
+
+
+#
+# (Tip: Search options using a keyword: perf report -h <keyword>)
+#

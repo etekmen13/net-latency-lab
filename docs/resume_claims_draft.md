@@ -16,6 +16,54 @@ lines), and evidence that you distrust your own instruments.
 
 ---
 
+## Tier 0 — the lead bullet (write this first)
+
+None of the findings below mean anything to a reviewer who does not know what was
+built. This is the context line that goes above them. It has to establish, in the
+five seconds it gets: that this is a *controlled experiment* rather than a benchmark
+script, what was compared, on what hardware, and why the numbers can be trusted.
+
+**Project header**
+
+> **net-latency-lab** — Linux UDP receive-path benchmark · C++23, Python, `perf`
+
+**Lead bullet (recommended)**
+
+> Designed and ran a controlled experiment comparing three Linux UDP receive
+> architectures — synchronous `recvfrom`, batched `recvmmsg`, and `recvmmsg` feeding
+> a lock-free SPSC ring to a second core — on two dedicated Raspberry Pi 4s over an
+> isolated 1 GbE link: **168 runs, 1.05 billion packets**, five repetitions per point
+> in randomized order, under a protocol frozen to a git commit before collection.
+> Publication is gated by an automated rule that refuses to emit a claim unless the
+> sweep is demonstrably receiver-limited rather than sender-limited, clears a minimum
+> effect size with non-overlapping repetition ranges, and is corroborated by `perf`
+> counters.
+
+**Compact variant, if space is tight**
+
+> Controlled comparison of three Linux UDP receive architectures (`recvfrom`,
+> `recvmmsg`, `recvmmsg` + lock-free SPSC handoff) across two dedicated Raspberry
+> Pi 4s on isolated 1 GbE — 168 runs, 1.05B packets, 5 repetitions per point,
+> randomized order, with an automated gate that blocks unsupported claims.
+
+**One extra clause worth adding if the role is infrastructure-leaning**
+
+> …including the orchestration harness itself: ~3,000 lines of Python driving both
+> hosts over SSH with no control traffic inside any timed interval, ~2,500 lines of
+> C++23, and 145 tests including ThreadSanitizer coverage of the lock-free queue.
+
+*Why this framing:* the differentiator is the **gate**. Most benchmark projects report
+whatever they measured; this one is built to refuse. Saying so up front reframes every
+number below as something that survived a filter rather than something that was
+selected. It also pre-empts the obvious objection — "it's a Raspberry Pi" — by making
+the subject the *method*, not the hardware. The hardware being small is then a
+feature: it puts the interesting bottlenecks within reach of careful measurement.
+
+*Do not* lead with a throughput number. Lead with the design, let the reviewer reach
+the findings already primed to believe them.
+
+---
+
 ## Tier 1 — candidates for the resume itself
 
 Pick 3–4. Written as prose, ready to adapt.
@@ -243,6 +291,8 @@ weakness is what makes the rest credible.
 | 44–59% reordering under multi-threaded send | scratch probes, 2026-08-17/18 |
 | queue delay 0.296 / 26.87 / 26.96 µs at 100k pps; 0.296 / 133 / 12,737 µs at capacity | `session_20260819T023815_913719Z` (D6), 3 reps x 180 s, 534,654 samples/config |
 | realized work 5.185 µs against a 5.000 µs request | same session, `processing_time_p50_us` |
+| 168 runs, 1,045,902,000 packets | sum of `send_successes` over the four published sessions (D0/D3/D5/D6) |
+| ~2,500 lines C++23, ~3,000 lines Python, 145 tests | `wc -l` over `src/`+`tests/native_tests.cpp`, `main.py`+`analysis/`; pytest collection |
 | 563 KiB sequence-tracker working set | 30 s × 150 kpps ÷ 4096 per block × 512 B |
 
 ## Still to come

@@ -1,0 +1,183 @@
+global:
+  topology: distributed_ethernet
+  benchmark_commit: 3ea425acff17eda35cd60577bf37ff7d0ccc103c
+  remote_project_root: /root/net-latency-lab
+  local_project_root: .
+  local_data_dir: results/sessions
+  user: root
+  metadata_collection: true
+  tuning_state: pi4-predeclared-v2
+  nodes:
+    receiver:
+      management_host: nll-receiver
+      benchmark_ip: 192.168.50.2
+      interface: eth0
+    sender:
+      management_host: nll-sender
+      benchmark_ip: 192.168.50.1
+      interface: eth0
+  runtime:
+    repetitions: 3
+    shuffle_seed: 477
+    port: 49200
+    receiver_startup_seconds: 0.5
+    post_sender_drain_seconds: 1.0
+    shutdown_timeout_seconds: 30
+    receive_buffer_bytes: 4194304
+    send_buffer_bytes: 4194304
+    receiver_cpu: 3
+    worker_cpu: 2
+    sender_cpu: 3
+    scheduler: fifo
+    priority: 90
+    privilege_prefix: []
+    build_preset: pi4-release
+    build_subdir: pi4-release
+benchmarks:
+- name: profile_stat_baseline
+  campaign: profile
+  repetitions: 3
+  profile: stat
+  perf_events:
+  - task-clock
+  - cycles
+  - instructions
+  - branches
+  - branch-misses
+  - cache-references
+  - cache-misses
+  - context-switches
+  - cpu-migrations
+  - page-faults
+  - syscalls:sys_enter_recvfrom
+  - syscalls:sys_enter_recvmmsg
+  receiver:
+    binary: receiver_baseline
+    batch_sizes:
+    - 1
+    work_ns: 5000
+    sample_every: 0
+  sender:
+    mode: steady
+    duration_seconds: 30.0
+    rates_pps:
+    - 123200
+    burst_sizes:
+    - 1
+    payload_size: 64
+- name: profile_record_baseline
+  campaign: profile
+  repetitions: 1
+  profile: record
+  receiver:
+    binary: receiver_baseline
+    batch_sizes:
+    - 1
+    work_ns: 5000
+    sample_every: 0
+  sender:
+    mode: steady
+    duration_seconds: 30.0
+    rates_pps:
+    - 123200
+    burst_sizes:
+    - 1
+    payload_size: 64
+- name: profile_stat_batched
+  campaign: profile
+  repetitions: 3
+  profile: stat
+  perf_events:
+  - task-clock
+  - cycles
+  - instructions
+  - branches
+  - branch-misses
+  - cache-references
+  - cache-misses
+  - context-switches
+  - cpu-migrations
+  - page-faults
+  - syscalls:sys_enter_recvfrom
+  - syscalls:sys_enter_recvmmsg
+  receiver:
+    binary: receiver_batched
+    batch_sizes:
+    - 64
+    work_ns: 5000
+    sample_every: 0
+  sender:
+    mode: steady
+    duration_seconds: 30.0
+    rates_pps:
+    - 123200
+    burst_sizes:
+    - 1
+    payload_size: 64
+- name: profile_record_batched
+  campaign: profile
+  repetitions: 1
+  profile: record
+  receiver:
+    binary: receiver_batched
+    batch_sizes:
+    - 64
+    work_ns: 5000
+    sample_every: 0
+  sender:
+    mode: steady
+    duration_seconds: 30.0
+    rates_pps:
+    - 123200
+    burst_sizes:
+    - 1
+    payload_size: 64
+- name: profile_stat_threaded
+  campaign: profile
+  repetitions: 3
+  profile: stat
+  perf_events:
+  - task-clock
+  - cycles
+  - instructions
+  - branches
+  - branch-misses
+  - cache-references
+  - cache-misses
+  - context-switches
+  - cpu-migrations
+  - page-faults
+  - syscalls:sys_enter_recvfrom
+  - syscalls:sys_enter_recvmmsg
+  receiver:
+    binary: receiver_threaded
+    batch_sizes:
+    - 64
+    work_ns: 5000
+    sample_every: 0
+  sender:
+    mode: steady
+    duration_seconds: 30.0
+    rates_pps:
+    - 123200
+    burst_sizes:
+    - 1
+    payload_size: 64
+- name: profile_record_threaded
+  campaign: profile
+  repetitions: 1
+  profile: record
+  receiver:
+    binary: receiver_threaded
+    batch_sizes:
+    - 64
+    work_ns: 5000
+    sample_every: 0
+  sender:
+    mode: steady
+    duration_seconds: 30.0
+    rates_pps:
+    - 123200
+    burst_sizes:
+    - 1
+    payload_size: 64

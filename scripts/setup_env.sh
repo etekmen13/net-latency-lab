@@ -7,10 +7,20 @@ if [[ ${EUID} -ne 0 ]]; then
 fi
 
 ROLE=${1:-}
-# Extended regular expression matched against /proc/interrupts lines.  The Pi 4
-# kernel names these IRQs after their drivers (bcmgenet/brcmfmac), not after
-# eth0/wlan0, so pass the labels your own systems actually print.
+# Extended regular expression matched against /proc/interrupts lines.  Label
+# conventions differ by kernel: the Raspberry Pi Foundation kernel used by DietPi
+# v9.17.2 (6.18.x +rpt-rpi-v8) prints "eth0" for the NIC, while other kernels
+# print the driver name "bcmgenet".  Always confirm against /proc/interrupts on
+# the systems you are actually using rather than trusting either convention.
 IRQ_PATTERN=${2:-eth0}
+# Always steered alongside IRQ_PATTERN, whatever the operator passes.  These are
+# the management-path and storage interrupts, which must be kept off the pinned
+# measurement cores.  On the Pi 4 the Wi-Fi driver is SDIO-attached, so it raises
+# no "wlan" line at all -- it shares the "mmc1, mmc0" line with the SD card, and
+# that line was previously left with a 0-3 affinity mask, i.e. permitted to fire
+# on the receiver and worker cores.  It happened to land on CPU0 in practice, but
+# nothing enforced it.
+HOUSEKEEPING_IRQ_PATTERN=${HOUSEKEEPING_IRQ_PATTERN:-wlan|mmc|brcm}
 SNAPSHOT=${3:-/var/tmp/net-latency-lab-tuning}
 # The benchmark link itself, for pause-frame control. Distinct from IRQ_PATTERN,
 # which matches driver labels in /proc/interrupts.
@@ -82,7 +92,7 @@ if ! ethtool -A "${BENCH_INTERFACE}" autoneg off rx off tx off 2>/dev/null; then
   ethtool -A "${BENCH_INTERFACE}" rx off tx off
 fi
 
-awk -v names="${IRQ_PATTERN}|wlan" '$0 ~ names {gsub(":", "", $1); print $1}' /proc/interrupts |
+awk -v names="${IRQ_PATTERN}|${HOUSEKEEPING_IRQ_PATTERN}" '$0 ~ names {gsub(":", "", $1); print $1}' /proc/interrupts |
 while read -r irq; do
   [[ -n ${irq} && -w /proc/irq/${irq}/smp_affinity_list ]] || continue
   cp "/proc/irq/${irq}/smp_affinity_list" "${SNAPSHOT}/irq/${irq}"
@@ -123,6 +133,7 @@ fi
 cat > "${SNAPSHOT}/parameters" <<EOF
 role=${ROLE}
 irq_pattern=${IRQ_PATTERN}
+housekeeping_irq_pattern=${HOUSEKEEPING_IRQ_PATTERN}
 bench_interface=${BENCH_INTERFACE}
 network_cpu=${NETWORK_CPU}
 housekeeping_cpu=${HOUSEKEEPING_CPU}
@@ -142,11 +153,11 @@ for affinity in "${SNAPSHOT}"/irq/*; do
   steered=$((steered + 1))
 done
 if ((steered == 0)); then
-  echo "No /proc/interrupts line matched '${IRQ_PATTERN}|wlan'; no IRQ was steered to CPU ${NETWORK_CPU}." >&2
-  echo "Inspect /proc/interrupts for the driver labels your kernel prints (typically bcmgenet and brcmfmac) and pass them instead." >&2
+  echo "No /proc/interrupts line matched '${IRQ_PATTERN}|${HOUSEKEEPING_IRQ_PATTERN}'; no IRQ was steered to CPU ${NETWORK_CPU}." >&2
+  echo "Inspect /proc/interrupts for the labels your kernel actually prints. The Raspberry Pi Foundation kernel names the NIC lines 'eth0'; other kernels name them 'bcmgenet'." >&2
   exit 1
 fi
 
 COMPLETED=1
-echo "Saved restorable state in ${SNAPSHOT}. Steered ${steered} IRQ line(s) matching '${IRQ_PATTERN}|wlan'."
+echo "Saved restorable state in ${SNAPSHOT}. Steered ${steered} IRQ line(s) matching '${IRQ_PATTERN}|${HOUSEKEEPING_IRQ_PATTERN}'."
 echo "CPUs: network=${NETWORK_CPU}, housekeeping=${HOUSEKEEPING_CPU}, worker=${WORKER_CPU}, receive/sender=${RECEIVER_CPU}."

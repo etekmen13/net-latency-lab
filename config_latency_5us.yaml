@@ -1,0 +1,122 @@
+# Stage D6: the sync-free tail-latency campaign at W* = 5 us.
+#
+# The claimed quantity is application_queue_delay = processing_start_ts - rx_ts.
+# Both timestamps are taken on the receiver host, so the difference is a single
+# subtraction with no cross-host synchronisation in it. receive_latency and
+# total_application_latency are NOT claimable: they cross hosts via
+# CLOCK_REALTIME, and chrony's residual wander (tens of microseconds) is
+# comparable to the inter-variant differences being measured.
+#
+# sample_every is 101, not 100, and the choice is load-bearing. rx_ts is captured
+# once per recvmmsg call, so a packet's queue delay is a near-linear function of
+# its position within the batch, spanning 0 to batch_size * W. Sampling every
+# 100th sequence number against a batch of 64 visits only 16 of the 64 in-batch
+# positions and never positions 1-3, which biases exactly the quantity being
+# measured. 101 is prime, so it is coprime with every power-of-two batch size and
+# visits all positions uniformly.
+#
+# Two load conditions:
+#   (a) 100k pps, below every variant's knee, so all three are compared at an
+#       identical offered rate. This is the claim condition.
+#   (b) ~95% of each variant's own measured knee, showing where the tail departs.
+#
+# 180 s runs give roughly 178k samples each at 100k pps, so p50/p99/p99.9 are all
+# well supported (tail_quantile requires >=1000 samples for p99.9). Do NOT claim
+# p99.99 or max from this: at ~178 samples beyond p99.9 the former is unsupported
+# and the latter is not a statistic.
+global:
+  topology: distributed_ethernet
+  benchmark_commit: 3ea425acff17eda35cd60577bf37ff7d0ccc103c
+  remote_project_root: /root/net-latency-lab
+  local_project_root: .
+  local_data_dir: results/sessions
+  user: root
+  metadata_collection: true
+  tuning_state: pi4-predeclared-v2
+  nodes:
+    receiver: {management_host: nll-receiver, benchmark_ip: 192.168.50.2, interface: eth0}
+    sender: {management_host: nll-sender, benchmark_ip: 192.168.50.1, interface: eth0}
+  runtime:
+    repetitions: 3
+    shuffle_seed: 477
+    port: 49200
+    receiver_startup_seconds: 0.5
+    post_sender_drain_seconds: 1.0
+    shutdown_timeout_seconds: 60
+    receive_buffer_bytes: 4194304
+    send_buffer_bytes: 4194304
+    receiver_cpu: 3
+    worker_cpu: 2
+    sender_cpu: 3
+    scheduler: fifo
+    priority: 90
+    privilege_prefix: []
+    build_preset: pi4-release
+    build_subdir: pi4-release
+
+benchmarks:
+  # (a) Common offered rate, below every knee: the apples-to-apples comparison.
+  - name: latency_common_baseline
+    campaign: latency_5us
+    contributes_to_claim_measurements: false
+    receiver: {binary: receiver_baseline, batch_sizes: [1], work_ns: 5000, sample_every: 101}
+    sender: &common_load
+      mode: steady
+      duration_seconds: 180
+      rates_pps: [100000]
+      burst_sizes: [1]
+      payload_size: 64
+      send_batch_max: 64
+      batch_window_us: 50
+      threads: 1
+  - name: latency_common_batched
+    campaign: latency_5us
+    contributes_to_claim_measurements: false
+    receiver: {binary: receiver_batched, batch_sizes: [64], work_ns: 5000, sample_every: 101}
+    sender: *common_load
+  - name: latency_common_threaded
+    campaign: latency_5us
+    contributes_to_claim_measurements: false
+    receiver: {binary: receiver_threaded, batch_sizes: [64], work_ns: 5000, sample_every: 101}
+    sender: *common_load
+
+  # (b) Each variant at ~95% of its own D0-measured knee: where the tail departs.
+  - name: latency_atknee_baseline
+    campaign: latency_5us
+    contributes_to_claim_measurements: false
+    receiver: {binary: receiver_baseline, batch_sizes: [1], work_ns: 5000, sample_every: 101}
+    sender:
+      mode: steady
+      duration_seconds: 180
+      rates_pps: [144000]
+      burst_sizes: [1]
+      payload_size: 64
+      send_batch_max: 64
+      batch_window_us: 50
+      threads: 1
+  - name: latency_atknee_batched
+    campaign: latency_5us
+    contributes_to_claim_measurements: false
+    receiver: {binary: receiver_batched, batch_sizes: [64], work_ns: 5000, sample_every: 101}
+    sender:
+      mode: steady
+      duration_seconds: 180
+      rates_pps: [156000]
+      burst_sizes: [1]
+      payload_size: 64
+      send_batch_max: 64
+      batch_window_us: 50
+      threads: 1
+  - name: latency_atknee_threaded
+    campaign: latency_5us
+    contributes_to_claim_measurements: false
+    receiver: {binary: receiver_threaded, batch_sizes: [64], work_ns: 5000, sample_every: 101}
+    sender:
+      mode: steady
+      duration_seconds: 180
+      rates_pps: [180000]
+      burst_sizes: [1]
+      payload_size: 64
+      send_batch_max: 64
+      batch_window_us: 50
+      threads: 1

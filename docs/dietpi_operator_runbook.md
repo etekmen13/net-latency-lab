@@ -473,10 +473,21 @@ First identify the actual IRQ labels on each Pi:
 
 ```bash
 sudo ethtool -i eth0
-grep -Ei 'bcmgenet|brcmfmac|eth0|wlan0' /proc/interrupts
+grep -Ei 'bcmgenet|brcmfmac|eth0|wlan|mmc' /proc/interrupts
 ```
 
-Typical Pi 4 labels are `bcmgenet` for Ethernet and `brcmfmac` for Wi-Fi. Use the labels actually shown by your systems.
+Label conventions differ by kernel, so read the output rather than trusting either
+convention. On the Raspberry Pi Foundation kernel shipped with DietPi v9.17.2
+(6.18.x `+rpt-rpi-v8`) the NIC lines are labelled **`eth0`**, not `bcmgenet`, and
+there is no `wlan` line at all: the Wi-Fi adapter is SDIO-attached and shares the
+`mmc1, mmc0` interrupt with the SD card. Passing `'bcmgenet|brcmfmac'` on such a
+system matches nothing, and `setup_env.sh` aborts with "no IRQ was steered".
+
+`setup_env.sh` always additionally steers anything matching
+`wlan|mmc|brcm` (overridable via `HOUSEKEEPING_IRQ_PATTERN`), so the management and
+storage interrupts are kept off the pinned measurement cores whichever label
+convention your kernel uses. That line otherwise keeps a `0-3` affinity mask, i.e.
+it is permitted to fire on the receiver and worker cores.
 
 On the receiver:
 
@@ -488,7 +499,7 @@ sudo env \
   BUILD_SUBDIR=pi4-release \
   ./scripts/setup_env.sh \
   receiver \
-  'bcmgenet|brcmfmac' \
+  'eth0' \
   /var/tmp/nll-tuning-receiver
 ```
 
@@ -502,11 +513,11 @@ sudo env \
   BUILD_SUBDIR=pi4-release \
   ./scripts/setup_env.sh \
   sender \
-  'bcmgenet|brcmfmac' \
+  'eth0' \
   /var/tmp/nll-tuning-sender
 ```
 
-If your IRQ labels differ, replace the quoted pattern. Do not pass `eth0` blindly—the kernel often names these IRQs after the driver.
+The quoted pattern matches the NIC lines only; replace it with whatever your own `/proc/interrupts` prints. On kernels that name IRQs after the driver rather than the interface, pass `'bcmgenet'` instead. The script reports how many lines it steered and fails loudly if that count is zero, so a mismatched pattern cannot pass silently.
 
 Verify on both:
 

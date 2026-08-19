@@ -100,7 +100,7 @@ multiplexing requires a rerun.
    pi4-release`, `ctest --preset pi4-release`, and `.venv/bin/python -m pytest
    -q`. Build/run the `tsan` preset before performance work.
 3. From the repository root, run
-   `sudo scripts/setup_env.sh receiver 'bcmgenet|brcmfmac'` on the receiver and
+   `sudo scripts/setup_env.sh receiver 'eth0'` (the NIC IRQ label on the Pi Foundation kernel; confirm against `/proc/interrupts`) on the receiver and
    the same command with `sender` on the sender. The second argument is an
    extended regular expression matched against `/proc/interrupts`, not an
    interface name: the Pi 4 kernel labels these IRQs after their drivers. The

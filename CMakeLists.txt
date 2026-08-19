@@ -28,6 +28,11 @@ endforeach()
 add_executable(sender src/sender/sender.cpp)
 target_link_libraries(sender PRIVATE nll_options pthread)
 
+# Offline handoff measurement. Needs no network, so it can settle whether
+# pipelining can pay before any hardware time is spent on a rate sweep.
+add_executable(spsc_bench src/bench/spsc_bench.cpp)
+target_link_libraries(spsc_bench PRIVATE nll_options pthread)
+
 if(BUILD_TESTING)
   include(CTest)
   find_package(GTest CONFIG REQUIRED)

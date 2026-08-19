@@ -1,0 +1,93 @@
+# Stage D3: the gated claim run at the W* = 5 us per-packet processing budget.
+#
+# Five repetitions, 30 s each, randomized order, sample_every 0 (throughput
+# only; latency is collected separately in the D6 campaign at sample_every 101).
+#
+# Rate grids are centred on the knees measured in the D0 bracket
+# (results/sessions/session_20260818T161946_132709Z):
+#
+#   receiver   service rate   implied r at W=5us   D0 zero-loss knee
+#   baseline     152,528        1.556 us             150k pass / 160k fail
+#   batched      164,471        1.080 us             160k pass / 170k fail
+#   threaded     189,144        0.287 us handoff     170k pass / 190k = 0.33%
+#
+# The top rate of every grid is one the D0 bracket already showed failing. That
+# is deliberate and load-bearing: the claim gate marks a configuration
+# `saturated` only when a strictly higher rate for the SAME receiver, batch and
+# workload was tested and failed the sustainability rule. Without a failing rate
+# in the same grid the result would read as sender-limited and be blocked.
+#
+# Keep duration_seconds identical across every benchmark here. duration_seconds
+# is one of the CONFIGURATION_KEYS the analysis groups on, so a shorter overload
+# probe would land in a separate group and would not establish saturation for
+# the 30 s runs. The failing top rate doubles as the grid-free service-rate
+# estimate: in overload, processing_window_pps IS the service rate.
+global:
+  topology: distributed_ethernet
+  benchmark_commit: 3ea425acff17eda35cd60577bf37ff7d0ccc103c
+  remote_project_root: /root/net-latency-lab
+  local_project_root: .
+  local_data_dir: results/sessions
+  user: root
+  metadata_collection: true
+  tuning_state: pi4-predeclared-v2
+  nodes:
+    receiver: {management_host: nll-receiver, benchmark_ip: 192.168.50.2, interface: eth0}
+    sender: {management_host: nll-sender, benchmark_ip: 192.168.50.1, interface: eth0}
+  runtime:
+    repetitions: 5
+    shuffle_seed: 477
+    port: 49200
+    receiver_startup_seconds: 0.5
+    post_sender_drain_seconds: 1.0
+    shutdown_timeout_seconds: 30
+    receive_buffer_bytes: 4194304
+    send_buffer_bytes: 4194304
+    receiver_cpu: 3
+    worker_cpu: 2
+    sender_cpu: 3
+    scheduler: fifo
+    priority: 90
+    privilege_prefix: []
+    build_preset: pi4-release
+    build_subdir: pi4-release
+
+benchmarks:
+  - name: claim_baseline_w5
+    campaign: work_5us
+    receiver: {binary: receiver_baseline, batch_sizes: [1], work_ns: 5000, sample_every: 0}
+    sender:
+      mode: steady
+      duration_seconds: 30
+      rates_pps: [146000, 150000, 152000, 154000, 160000]
+      burst_sizes: [1]
+      payload_size: 64
+      send_batch_max: 64
+      batch_window_us: 50
+      threads: 1
+
+  - name: claim_batched_w5
+    campaign: work_5us
+    receiver: {binary: receiver_batched, batch_sizes: [64], work_ns: 5000, sample_every: 0}
+    sender:
+      mode: steady
+      duration_seconds: 30
+      rates_pps: [158000, 162000, 164000, 166000, 172000]
+      burst_sizes: [1]
+      payload_size: 64
+      send_batch_max: 64
+      batch_window_us: 50
+      threads: 1
+
+  - name: claim_threaded_w5
+    campaign: work_5us
+    receiver: {binary: receiver_threaded, batch_sizes: [64], work_ns: 5000, sample_every: 0}
+    sender:
+      mode: steady
+      duration_seconds: 30
+      rates_pps: [172000, 178000, 182000, 186000, 195000]
+      burst_sizes: [1]
+      payload_size: 64
+      send_batch_max: 64
+      batch_window_us: 50
+      threads: 1

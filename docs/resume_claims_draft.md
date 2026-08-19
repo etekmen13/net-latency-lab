@@ -125,6 +125,11 @@ Bring these out when they dig. Each is a complete story with a number.
   performed. Replaced with the mechanism the architecture actually claims: fewer
   receive syscalls per packet, plus zero kernel ingress loss and zero queue overflow
   in every repetition — strictly harder to satisfy, and on-mechanism.
+- **The knee is not a short-run artifact.** A finite-buffer queue offered exactly its
+  service rate is a random walk that eventually overflows, so a "zero-loss capacity"
+  measured over 30 s can be an artifact of the run being short. Checked by extending
+  to 180 s at 97% of the measured knee: 32.4M packets, 0.000% loss, i.e. 6× the
+  duration that established the knee with no loss accumulation.
 - **Detecting that the receivers were never saturated.** All three variants tied at
   ~386 kpps, which looked like a receiver limit and was actually the *generator's*
   ceiling. A tie across architectures is a signature of a sender-limited sweep. This
